@@ -1,4 +1,5 @@
 """wt CLI - Git worktree toolkit."""
+
 from __future__ import annotations
 
 import os
@@ -11,7 +12,7 @@ import typer
 from rich.console import Console
 
 from wt import __version__
-from wt.config import ensure_config
+from wt.config import ensure_config, ensure_worktrees_gitignore
 from wt.errors import (
     BaseBranchNotFoundError,
     BranchExistsError,
@@ -91,12 +92,15 @@ def get_validated_repo_root() -> Path:
 @error_handler
 def new(
     feat_name: Annotated[str, typer.Argument(help="Feature name for the new worktree")],
-    base: Annotated[str | None, typer.Option("--base", "-b", help="Base branch")] = None,
+    base: Annotated[
+        str | None, typer.Option("--base", "-b", help="Base branch")
+    ] = None,
     no_ai: Annotated[bool, typer.Option("--no-ai", help="Don't launch AI TUI")] = False,
 ) -> None:
     """Create a new worktree for a feature."""
     repo_root = get_validated_repo_root()
     config = ensure_config(repo_root)
+    ensure_worktrees_gitignore(repo_root)
 
     normalized = normalize_feat_name(feat_name)
     branch = f"{config.branch_prefix}{normalized}"
@@ -142,6 +146,7 @@ def checkout(
     """Checkout an existing branch into a worktree."""
     repo_root = get_validated_repo_root()
     config = ensure_config(repo_root)
+    ensure_worktrees_gitignore(repo_root)
 
     worktrees = worktree_list(cwd=repo_root)
     for worktree in worktrees:
@@ -184,10 +189,14 @@ def checkout(
 @app.command()
 @error_handler
 def pr(
-    base: Annotated[str | None, typer.Option("--base", "-b", help="Base branch for PR")] = None,
+    base: Annotated[
+        str | None, typer.Option("--base", "-b", help="Base branch for PR")
+    ] = None,
     title: Annotated[str | None, typer.Option("--title", "-t", help="PR title")] = None,
     body: Annotated[str | None, typer.Option("--body", help="PR body")] = None,
-    draft: Annotated[bool, typer.Option("--draft", "-d", help="Create as draft PR")] = False,
+    draft: Annotated[
+        bool, typer.Option("--draft", "-d", help="Create as draft PR")
+    ] = False,
     no_push: Annotated[
         bool,
         typer.Option("--no-push", help="Don't push, require already pushed"),
@@ -242,7 +251,9 @@ def pr(
 def delete(
     force: Annotated[
         bool,
-        typer.Option("--force", "-f", help="Force delete even with uncommitted/unpushed changes"),
+        typer.Option(
+            "--force", "-f", help="Force delete even with uncommitted/unpushed changes"
+        ),
     ] = False,
     remote: Annotated[
         bool,
@@ -260,7 +271,9 @@ def delete(
     current_branch = get_current_branch(cwd=cwd)
 
     state = WtState.load(get_state_path(repo_root))
-    entry = state.find_by_path(str(worktree_root)) or state.find_by_branch(current_branch)
+    entry = state.find_by_path(str(worktree_root)) or state.find_by_branch(
+        current_branch
+    )
 
     if entry is None:
         raise NotInWorktreeError()
@@ -299,7 +312,9 @@ def delete(
 
 @app.callback()
 def main(
-    version: Annotated[bool, typer.Option("--version", "-v", help="Show version")] = False,
+    version: Annotated[
+        bool, typer.Option("--version", "-v", help="Show version")
+    ] = False,
 ) -> None:
     """wt - Git worktree toolkit for feature-branch workflows."""
     if version:

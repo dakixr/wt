@@ -1,4 +1,5 @@
 """Configuration management for wt."""
+
 from __future__ import annotations
 
 import json
@@ -54,3 +55,14 @@ def ensure_config(repo_root: Path) -> WtConfig:
     if not config_path.exists():
         config.save(config_path)
     return config
+
+
+def ensure_worktrees_gitignore(repo_path: Path) -> None:
+    """Ensure the worktrees/.gitignore file exists."""
+    config_path = get_config_path(repo_path)
+    config = WtConfig.load(config_path)
+    worktrees_gitignore_path = Path(config.worktrees_dir) / ".gitignore"
+    if not worktrees_gitignore_path.exists():
+        worktrees_gitignore_path.parent.mkdir(parents=True, exist_ok=True)
+        worktrees_gitignore_path.touch()
+        worktrees_gitignore_path.write_text("*\n")
