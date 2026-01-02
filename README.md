@@ -15,24 +15,18 @@ A powerful CLI tool for managing git worktrees in feature-branch workflows. Stre
 
 ## Installation
 
-Install using [uv](https://docs.astral.sh/uv/), the modern Python package manager:
+Install directly from GitHub using [uv](https://docs.astral.sh/uv/):
 
 ```bash
-uv tool install wt
+uv tool install git+https://github.com/dakixr/wt.git
 ```
 
-Or if you prefer to install from source:
+Or for development, clone and install in editable mode:
 
 ```bash
 git clone https://github.com/dakixr/wt.git
 cd wt
-uv tool install .
-```
-
-Upgrade to the latest version:
-
-```bash
-uv tool upgrade wt
+uv tool install -e .
 ```
 
 ## Quick Start
