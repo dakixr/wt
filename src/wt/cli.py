@@ -13,7 +13,8 @@ import typer
 from rich.console import Console
 
 from wt import __version__
-from wt.config import ensure_config, ensure_worktrees_gitignore
+from wt.config import ensure_config, ensure_worktrees_gitignore, get_wt_dir
+from wt.init import InitContext, resolve_init_script, run_init_script
 from wt.errors import (
     BaseBranchNotFoundError,
     BranchExistsError,
@@ -101,6 +102,12 @@ def new(
         str | None, typer.Option("--base", "-b", help="Base branch")
     ] = None,
     no_ai: Annotated[bool, typer.Option("--no-ai", help="Don't launch AI TUI")] = False,
+    no_init: Annotated[
+        bool, typer.Option("--no-init", help="Skip init script")
+    ] = False,
+    strict_init: Annotated[
+        bool, typer.Option("--strict-init", help="Fail if init script fails")
+    ] = False,
 ) -> None:
     """Create a new worktree for a feature."""
     repo_root = get_validated_repo_root()
@@ -133,6 +140,29 @@ def new(
     console.print(f"[green]Created worktree:[/green] {worktree_path}")
     console.print(f"[green]Branch:[/green] {branch}")
 
+    # Run init script if configured
+    if not no_init:
+        wt_root = get_wt_dir(repo_root)
+        script = resolve_init_script(config.init_script, wt_root)
+        if script:
+            ctx = InitContext(
+                wt_root=wt_root,
+                repo_root=repo_root,
+                worktree_path=worktree_path,
+                feat_name=normalized,
+                branch=branch,
+                base_branch=base_branch,
+            )
+            success = run_init_script(script, ctx, console, strict=strict_init)
+            if not success and strict_init:
+                # Cleanup: remove worktree and state
+                console.print("[dim]Cleaning up failed worktree...[/dim]")
+                worktree_remove(worktree_path, force=True, cwd=repo_root)
+                delete_branch(branch, force=True, cwd=repo_root)
+                state.remove_worktree(str(worktree_path))
+                state.save(get_state_path(repo_root))
+                raise typer.Exit(1)
+
     if not no_ai:
         launch_ai_tui(config.default_ai_tui, worktree_path)
 
@@ -146,6 +176,12 @@ def checkout(
     ] = False,
     ai: Annotated[
         bool, typer.Option("--ai", help="Launch AI TUI after checkout")
+    ] = False,
+    no_init: Annotated[
+        bool, typer.Option("--no-init", help="Skip init script")
+    ] = False,
+    strict_init: Annotated[
+        bool, typer.Option("--strict-init", help="Fail if init script fails")
     ] = False,
 ) -> None:
     """Checkout an existing branch into a worktree."""
@@ -186,6 +222,29 @@ def checkout(
         print(worktree_path)
     else:
         console.print(f"[green]Created worktree:[/green] {worktree_path}")
+
+    # Run init script if configured
+    if not no_init:
+        wt_root = get_wt_dir(repo_root)
+        script = resolve_init_script(config.init_script, wt_root)
+        if script:
+            ctx = InitContext(
+                wt_root=wt_root,
+                repo_root=repo_root,
+                worktree_path=worktree_path,
+                feat_name=feat_name,
+                branch=branch,
+                base_branch=config.base_branch,
+            )
+            success = run_init_script(script, ctx, console, strict=strict_init)
+            if not success and strict_init:
+                # Cleanup: remove worktree and state
+                if not print_path:
+                    console.print("[dim]Cleaning up failed worktree...[/dim]")
+                worktree_remove(worktree_path, force=True, cwd=repo_root)
+                state.remove_worktree(str(worktree_path))
+                state.save(get_state_path(repo_root))
+                raise typer.Exit(1)
 
     if ai:
         launch_ai_tui(config.default_ai_tui, worktree_path)
