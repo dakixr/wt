@@ -333,6 +333,9 @@ def pr(
 @app.command()
 @error_handler
 def delete(
+    name: Annotated[
+        str | None, typer.Argument(help="Worktree name to delete")
+    ] = None,
     force: Annotated[
         bool,
         typer.Option(
@@ -340,32 +343,51 @@ def delete(
         ),
     ] = False,
     remote: Annotated[
-        bool,
-        typer.Option("--remote", "-r", help="Also delete remote branch"),
+        bool, typer.Option("--remote", "-r", help="Also delete remote branch")
     ] = False,
 ) -> None:
-    """Delete the current worktree and its branch."""
+    """Delete a worktree and its branch."""
     repo_root = get_validated_repo_root()
-    worktree_root = get_worktree_root(cwd=Path.cwd())
-    if worktree_root == repo_root:
-        raise NotInWorktreeError()
-
-    config = ensure_config(repo_root)
+    state = WtState.load(get_state_path(repo_root))
     cwd = Path.cwd()
+    worktree_root = get_worktree_root(cwd=cwd)
+    in_worktree = worktree_root != repo_root
     current_branch = get_current_branch(cwd=cwd)
 
-    state = WtState.load(get_state_path(repo_root))
-    entry = state.find_by_path(str(worktree_root)) or state.find_by_branch(
-        current_branch
-    )
-
-    if entry is None:
-        raise NotInWorktreeError()
+    if name is not None:
+        entry = state.find_by_feat_name(name)
+        if entry is None:
+            entry = state.find_by_branch(name)
+        if entry is None:
+            raise WorktreeNotFoundError(name)
+    elif in_worktree:
+        entry = state.find_by_path(str(worktree_root)) or state.find_by_branch(
+            current_branch
+        )
+        if entry is None:
+            raise NotInWorktreeError()
+    else:
+        if not state.worktrees:
+            raise NoWorktreesError()
+        if not sys.stdin.isatty():
+            raise UsageError(
+                "Worktree name required when not in interactive mode.",
+                suggestion="Run 'wt delete <name>' or use a TTY.",
+            )
+        prompt_console = Console(stderr=True)
+        prompt_console.print("[bold]Available worktrees:[/bold]")
+        for idx, wt in enumerate(state.worktrees, start=1):
+            prompt_console.print(f"  {idx}. {wt.feat_name} [dim]({wt.path})[/dim]")
+        choice = typer.prompt("Select worktree to delete", type=int)
+        if choice < 1 or choice > len(state.worktrees):
+            raise UsageError("Invalid selection.")
+        entry = state.worktrees[choice - 1]
 
     if not force:
-        if has_uncommitted_changes(cwd=cwd):
+        worktree_cwd = Path(entry.path)
+        if has_uncommitted_changes(cwd=worktree_cwd):
             raise UncommittedChangesError()
-        if has_unpushed_commits(cwd=cwd):
+        if has_unpushed_commits(cwd=worktree_cwd):
             raise UnpushedCommitsError()
 
     worktree_path = Path(entry.path)
@@ -379,6 +401,7 @@ def delete(
     delete_branch(branch, force=force, cwd=repo_root)
 
     if remote:
+        config = ensure_config(repo_root)
         console.print(f"[dim]Deleting remote branch '{branch}'...[/dim]")
         try:
             delete_remote_branch(config.remote, branch, cwd=repo_root)
