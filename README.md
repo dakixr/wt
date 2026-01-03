@@ -112,7 +112,8 @@ wt stores configuration in `.wt/wt.json` within your repository. The default con
   "base_branch": "develop",
   "remote": "origin",
   "worktrees_dir": ".wt/worktrees",
-  "default_ai_tui": "opencode"
+  "default_ai_tui": "opencode",
+  "init_script": null
 }
 ```
 
@@ -125,8 +126,81 @@ wt stores configuration in `.wt/wt.json` within your repository. The default con
 | `remote` | `origin` | Remote name for push/fetch operations |
 | `worktrees_dir` | `.wt/worktrees` | Directory for worktree isolation |
 | `default_ai_tui` | `opencode` | Default AI TUI to launch |
+| `init_script` | `null` | Script to run after creating a worktree |
 
 Modify these values directly in `.wt/wt.json` or let wt create the file with defaults on first use.
+
+## Initialization Scripts
+
+wt can automatically run a script after creating a new worktree. This is useful for setting up the development environment (installing dependencies, copying config files, etc.).
+
+### Configuration
+
+Set `init_script` in `.wt/wt.json`:
+
+```json
+{
+  "init_script": "uv sync"
+}
+```
+
+Or use a custom script:
+
+```json
+{
+  "init_script": ".wt/hooks/init.sh"
+}
+```
+
+### Fallback Convention
+
+If `init_script` is not set, wt automatically looks for `.wt/hooks/init.sh` and runs it if present.
+
+### Environment Variables
+
+The init script receives these environment variables:
+
+| Variable | Description |
+|----------|-------------|
+| `WT_ROOT` | The `.wt` directory (absolute path) |
+| `WT_REPO_ROOT` | The main repository root |
+| `WT_WORKTREE_PATH` | The created worktree path |
+| `WT_FEAT_NAME` | The normalized feature name |
+| `WT_BRANCH` | The full branch name |
+| `WT_BASE_BRANCH` | The base branch |
+
+### Example Init Script
+
+```bash
+#!/bin/sh
+# .wt/hooks/init.sh
+set -e
+
+echo "Setting up worktree: $WT_FEAT_NAME"
+
+# Install dependencies
+uv sync
+
+# Copy environment template
+if [ -f "$WT_REPO_ROOT/.env.template" ]; then
+    cp "$WT_REPO_ROOT/.env.template" .env
+fi
+
+# Run additional project-specific setup
+if [ -f "$WT_ROOT/hooks/post-setup.sh" ]; then
+    . "$WT_ROOT/hooks/post-setup.sh"
+fi
+```
+
+### CLI Flags
+
+- `--no-init` — Skip the init script
+- `--strict-init` — Fail and cleanup the worktree if the init script fails
+
+```bash
+wt new my-feature --no-init        # Skip init script
+wt new my-feature --strict-init    # Fail if init script fails
+```
 
 ## Project Structure
 
@@ -134,8 +208,10 @@ Modify these values directly in `.wt/wt.json` or let wt create the file with def
 .wt/
 ├── worktrees/          # Isolated worktree directories
 │   └── feature-name/   # Individual worktree
-├── wt.json            # Configuration file
-└── state.json         # Worktree state tracking
+├── hooks/              # Optional hooks directory
+│   └── init.sh         # Init script (fallback if not in config)
+├── wt.json             # Configuration file
+└── state.json          # Worktree state tracking
 ```
 
 ## Requirements
