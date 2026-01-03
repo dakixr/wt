@@ -140,6 +140,27 @@ def has_unpushed_commits(cwd: Path | None = None) -> bool:
     return int(result.stdout.strip()) > 0
 
 
+def has_any_commits(cwd: Path | None = None) -> bool:
+    """Check if branch has at least one commit."""
+    result = run_git("rev-list", "--count", "HEAD", cwd=cwd, check=False)
+    if result.returncode != 0:
+        return False
+    return int(result.stdout.strip()) > 0
+
+
+def git_add_all(cwd: Path | None = None) -> None:
+    """Stage all changes."""
+    run_git("add", ".", cwd=cwd)
+
+
+def git_commit(cwd: Path | None = None, message: str | None = None) -> None:
+    """Create a commit with optional message."""
+    args = ["commit"]
+    if message:
+        args.extend(["-m", message])
+    run_git(*args, cwd=cwd)
+
+
 def delete_branch(branch: str, force: bool = False, cwd: Path | None = None) -> None:
     """Delete a local branch."""
     flag = "-D" if force else "-d"
@@ -201,3 +222,14 @@ def merge_branch(
         args.append("--ff-only")
     args.append(branch)
     run_git(*args, cwd=cwd)
+
+
+def list_remote_branches(cwd: Path | None = None) -> list[str]:
+    """List all remote branch names (without 'origin/' prefix)."""
+    result = run_git("branch", "-r", cwd=cwd, check=False)
+    branches: list[str] = []
+    for line in result.stdout.strip().split("\n"):
+        line = line.strip()
+        if line.startswith("origin/"):
+            branches.append(line[7:])
+    return branches

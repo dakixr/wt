@@ -40,9 +40,13 @@ from wt.git import (
     get_repo_root,
     get_upstream_branch,
     get_worktree_root,
+    git_add_all,
+    git_commit,
+    has_any_commits,
     has_uncommitted_changes,
     has_unpushed_commits,
     is_bare_repo,
+    list_remote_branches,
     merge_branch,
     push_branch,
     worktree_add,
@@ -290,6 +294,12 @@ def pr(
     entry = state.find_by_branch(current_branch)
     base_branch = base or (entry.base if entry else config.base_branch)
 
+    if has_uncommitted_changes(cwd=cwd):
+        console.print("[yellow]Auto-committing uncommitted changes...[/yellow]")
+        git_add_all(cwd=cwd)
+        git_commit(cwd=cwd, message=f"WIP: {current_branch}")
+        console.print(f"[green]Created commit:[/green] {current_branch}")
+
     if no_push:
         upstream = get_upstream_branch(cwd=cwd)
         if upstream is None:
@@ -436,7 +446,10 @@ def merge(
     worktree_path = Path(entry.path)
 
     if not force and has_uncommitted_changes(cwd=cwd):
-        raise UncommittedChangesError()
+        console.print("[yellow]Auto-committing uncommitted changes...[/yellow]")
+        git_add_all(cwd=cwd)
+        git_commit(cwd=cwd, message=f"WIP: {branch}")
+        console.print(f"[green]Created commit:[/green] {branch}")
 
     if not branch_exists(base_branch, cwd=repo_root):
         console.print(
@@ -508,6 +521,43 @@ def path(
 
     selected = state.worktrees[choice - 1]
     print(selected.path)
+
+
+@app.command(name="list")
+@error_handler
+def list_cmd(
+    all_flag: Annotated[
+        bool,
+        typer.Option("--all", "-a", help="Also show remote branches not tracked locally"),
+    ] = False,
+) -> None:
+    """List all wt-managed worktrees and optionally remote branches."""
+    from rich.table import Table
+
+    repo_root = get_validated_repo_root()
+    state = WtState.load(get_state_path(repo_root))
+
+    local_branches = {wt.branch for wt in state.worktrees}
+
+    if not state.worktrees and not all_flag:
+        raise NoWorktreesError()
+
+    table = Table(title="Worktrees")
+    table.add_column("feat_name", style="cyan")
+    table.add_column("branch")
+    table.add_column("path", style="dim")
+    table.add_column("type", style="yellow")
+
+    for wt in state.worktrees:
+        table.add_row(wt.feat_name, wt.branch, wt.path, "local")
+
+    if all_flag:
+        remote_branches = list_remote_branches(cwd=repo_root)
+        for branch in remote_branches:
+            if branch not in local_branches:
+                table.add_row("[dim]-[/dim]", branch, "[dim]-[/dim]", "[yellow]remote[/yellow]")
+
+    console.print(table)
 
 
 @app.callback()

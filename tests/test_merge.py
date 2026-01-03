@@ -16,7 +16,7 @@ runner = CliRunner()
 def test_merge_merges_into_base_and_deletes_worktree(git_repo: Path, monkeypatch) -> None:
     monkeypatch.chdir(git_repo)
 
-    result = runner.invoke(app, ["new", "my-feature", "--no-ai"])
+    result = runner.invoke(app, ["new", "my-feature", "--no-ai", "--no-push"])
     assert result.exit_code == 0
 
     worktree_path = git_repo / ".wt" / "worktrees" / "my-feature"
