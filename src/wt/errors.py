@@ -147,3 +147,27 @@ class BranchNotFoundError(UsageError):
             f"Branch '{branch}' not found locally or on remote.",
             suggestion="Check the branch name or fetch from the remote.",
         )
+
+
+class WorktreeNotFoundError(WtError):
+    """Raised when a worktree name is not found in state."""
+
+    exit_code = ExitCode.USAGE_ERROR
+
+    def __init__(self, name: str) -> None:
+        super().__init__(
+            f"Worktree '{name}' not found.",
+            suggestion="Run 'wt path' without arguments to see available worktrees.",
+        )
+
+
+class NoWorktreesError(WtError):
+    """Raised when no worktrees exist in state."""
+
+    exit_code = ExitCode.USAGE_ERROR
+
+    def __init__(self) -> None:
+        super().__init__(
+            "No worktrees found.",
+            suggestion="Create a worktree with 'wt new <feature>'.",
+        )

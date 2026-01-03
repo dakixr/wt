@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import subprocess
+import sys
 from functools import wraps
 from pathlib import Path
 from typing import Annotated
@@ -19,11 +20,13 @@ from wt.errors import (
     BranchNotFoundError,
     CommandFailedError,
     ExitCode,
+    NoWorktreesError,
     NotInGitRepoError,
     NotInWorktreeError,
     UncommittedChangesError,
     UnpushedCommitsError,
     UsageError,
+    WorktreeNotFoundError,
     WtError,
 )
 from wt.gh import check_gh_installed, create_pr
@@ -308,6 +311,46 @@ def delete(
     state.save(get_state_path(repo_root))
 
     console.print(f"[green]Deleted worktree and branch:[/green] {branch}")
+
+
+@app.command()
+@error_handler
+def path(
+    name: Annotated[
+        str | None, typer.Argument(help="Feature name of the worktree")
+    ] = None,
+) -> None:
+    """Print the path of a wt-managed worktree."""
+    repo_root = get_validated_repo_root()
+    state = WtState.load(get_state_path(repo_root))
+
+    if name is not None:
+        entry = state.find_by_feat_name(name)
+        if entry is None:
+            raise WorktreeNotFoundError(name)
+        print(entry.path)
+        return
+
+    if not state.worktrees:
+        raise NoWorktreesError()
+
+    if not sys.stdin.isatty():
+        raise UsageError(
+            "Interactive selection requires a TTY.",
+            suggestion="Run 'wt path <name>' or use a TTY.",
+        )
+
+    prompt_console = Console(stderr=True)
+    prompt_console.print("[bold]Available worktrees:[/bold]")
+    for idx, wt in enumerate(state.worktrees, start=1):
+        prompt_console.print(f"  {idx}. {wt.feat_name} [dim]({wt.path})[/dim]")
+
+    choice = typer.prompt("Select worktree", type=int)
+    if choice < 1 or choice > len(state.worktrees):
+        raise UsageError("Invalid selection.")
+
+    selected = state.worktrees[choice - 1]
+    print(selected.path)
 
 
 @app.callback()

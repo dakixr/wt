@@ -70,6 +70,13 @@ class WtState:
                 return item
         return None
 
+    def find_by_feat_name(self, feat_name: str) -> WorktreeEntry | None:
+        """Find a worktree entry by feature name."""
+        for item in self.worktrees:
+            if item.feat_name == feat_name:
+                return item
+        return None
+
 
 def get_state_path(repo_root: Path) -> Path:
     """Get the state file path."""
