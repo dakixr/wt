@@ -3,5 +3,6 @@
   "base_branch": "main",
   "remote": "origin",
   "worktrees_dir": ".wt/worktrees",
-  "default_ai_tui": "opencode"
+  "default_ai_tui": "opencode",
+  "init_script": "uv sync"
 }
