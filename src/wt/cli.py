@@ -391,19 +391,35 @@ def delete(
             raise UsageError("Invalid selection.")
         entry = state.worktrees[choice - 1]
 
-    if not force:
-        worktree_cwd = Path(entry.path)
+    worktree_path = Path(entry.path)
+    branch = entry.branch
+    path_missing = not worktree_path.exists()
+
+    if path_missing:
+        console.print(
+            f"[yellow]Warning:[/yellow] Worktree path '{worktree_path}' not found on disk. "
+            "Treating as stale entry."
+        )
+
+    if not force and not path_missing:
+        worktree_cwd = worktree_path
         if has_uncommitted_changes(cwd=worktree_cwd):
             raise UncommittedChangesError()
         if has_unpushed_commits(cwd=worktree_cwd):
             raise UnpushedCommitsError()
 
-    worktree_path = Path(entry.path)
-    branch = entry.branch
-
     os.chdir(repo_root)
     console.print(f"[dim]Removing worktree at {worktree_path}...[/dim]")
-    worktree_remove(worktree_path, force=force, cwd=repo_root)
+    try:
+        worktree_remove(worktree_path, force=force, cwd=repo_root)
+    except subprocess.CalledProcessError as exc:
+        if path_missing:
+            console.print(
+                "[yellow]Warning:[/yellow] Could not remove worktree (path missing): "
+                f"{exc.stderr or 'unknown error'}"
+            )
+        else:
+            raise
 
     console.print(f"[dim]Deleting branch '{branch}'...[/dim]")
     delete_branch(branch, force=force, cwd=repo_root)
@@ -422,7 +438,12 @@ def delete(
     state.remove_worktree(str(worktree_path))
     state.save(get_state_path(repo_root))
 
-    console.print(f"[green]Deleted worktree and branch:[/green] {branch}")
+    if path_missing:
+        console.print(
+            f"[green]Cleaned up stale worktree entry and deleted branch:[/green] {branch}"
+        )
+    else:
+        console.print(f"[green]Deleted worktree and branch:[/green] {branch}")
 
 
 @app.command()
