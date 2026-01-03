@@ -154,14 +154,15 @@ def delete_remote_branch(remote: str, branch: str, cwd: Path | None = None) -> N
 def push_branch(
     branch: str,
     set_upstream: bool = False,
+    remote: str = "origin",
     cwd: Path | None = None,
 ) -> None:
-    """Push a branch to origin."""
+    """Push a branch to a remote."""
     args = ["push"]
     if set_upstream:
-        args.extend(["-u", "origin", branch])
+        args.extend(["-u", remote, branch])
     else:
-        args.append("origin")
+        args.append(remote)
     run_git(*args, cwd=cwd)
 
 
@@ -178,3 +179,25 @@ def get_upstream_branch(cwd: Path | None = None) -> str | None:
     if result.returncode != 0:
         return None
     return result.stdout.strip()
+
+
+def checkout_branch(branch: str, cwd: Path | None = None) -> None:
+    """Checkout a branch."""
+    run_git("checkout", branch, cwd=cwd)
+
+
+def merge_branch(
+    branch: str,
+    *,
+    no_ff: bool = False,
+    ff_only: bool = False,
+    cwd: Path | None = None,
+) -> None:
+    """Merge the given branch into the current branch."""
+    args = ["merge"]
+    if no_ff:
+        args.append("--no-ff")
+    if ff_only:
+        args.append("--ff-only")
+    args.append(branch)
+    run_git(*args, cwd=cwd)

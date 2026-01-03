@@ -82,6 +82,18 @@ wt delete --force        # Skip safety checks
 wt delete --remote       # Also delete remote branch
 ```
 
+### `wt merge`
+
+Merge the current worktree branch into its base branch (no PR), then delete the worktree.
+
+```bash
+wt merge
+wt merge --no-push              # Don't push base branch after merge
+wt merge --base main            # Override base branch
+wt merge --no-ff                # Force a merge commit
+wt merge --ff-only              # Only allow fast-forward merges
+```
+
 ### `wt --version`
 
 Show the installed version.
