@@ -78,6 +78,12 @@ def fetch_branch(remote: str, branch: str, cwd: Path | None = None) -> bool:
     return result.returncode == 0
 
 
+def remote_exists(remote: str = "origin", cwd: Path | None = None) -> bool:
+    """Check if a remote exists."""
+    result = run_git("remote", "get-url", remote, cwd=cwd, check=False)
+    return result.returncode == 0
+
+
 def get_current_branch(cwd: Path | None = None) -> str:
     """Get the current branch name."""
     result = run_git("rev-parse", "--abbrev-ref", "HEAD", cwd=cwd)

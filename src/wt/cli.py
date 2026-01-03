@@ -49,6 +49,7 @@ from wt.git import (
     list_remote_branches,
     merge_branch,
     push_branch,
+    remote_exists,
     worktree_add,
     worktree_add_existing,
     worktree_list,
@@ -142,8 +143,20 @@ def new(
     worktree_add(worktree_path, branch, base_branch, cwd=repo_root)
 
     if not no_push:
-        console.print(f"[dim]Pushing branch '{branch}' to {config.remote}...[/dim]")
-        push_branch(branch, set_upstream=True, remote=config.remote, cwd=repo_root)
+        if remote_exists(config.remote, cwd=repo_root):
+            console.print(
+                f"[dim]Pushing branch '{branch}' to {config.remote}...[/dim]"
+            )
+            push_branch(branch, set_upstream=True, remote=config.remote, cwd=repo_root)
+        else:
+            console.print(
+                f"[yellow]Warning:[/yellow] Remote '{config.remote}' not found. "
+                "Skipping push."
+            )
+            console.print(
+                "[dim]Suggestion:[/dim] Add a remote with "
+                f"'git remote add {config.remote} <url>' or use --no-push."
+            )
 
     state = WtState.load(get_state_path(repo_root))
     state.add_worktree(normalized, branch, str(worktree_path), base_branch)
@@ -504,18 +517,12 @@ def path(
     if not state.worktrees:
         raise NoWorktreesError()
 
-    if not sys.stdin.isatty():
-        raise UsageError(
-            "Interactive selection requires a TTY.",
-            suggestion="Run 'wt path <name>' or use a TTY.",
-        )
-
     prompt_console = Console(stderr=True)
     prompt_console.print("[bold]Available worktrees:[/bold]")
     for idx, wt in enumerate(state.worktrees, start=1):
         prompt_console.print(f"  {idx}. {wt.feat_name} [dim]({wt.path})[/dim]")
 
-    choice = typer.prompt("Select worktree", type=int)
+    choice = typer.prompt("Select worktree", type=int, err=True)
     if choice < 1 or choice > len(state.worktrees):
         raise UsageError("Invalid selection.")
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import typer
 from typer.testing import CliRunner
 
 from wt.cli import app
@@ -60,3 +61,26 @@ class TestPathNoArgs:
 
         assert result.exit_code != 0
         assert "no worktrees" in result.stdout.lower()
+
+    def test_interactive_stdout_only_path(self, git_repo: Path, monkeypatch) -> None:
+        worktree_path = git_repo / ".wt/worktrees/my-feature"
+        setup_state(
+            git_repo,
+            [
+                {
+                    "feat_name": "my-feature",
+                    "branch": "feature/my-feature",
+                    "path": str(worktree_path),
+                    "base": "develop",
+                    "created_at": "2026-01-01T00:00:00",
+                }
+            ],
+        )
+        monkeypatch.chdir(git_repo)
+        monkeypatch.setattr(typer, "prompt", lambda *args, **kwargs: 1)
+
+        result = runner.invoke(app, ["path"])
+
+        assert result.exit_code == 0
+        assert result.stdout == f"{worktree_path}\n"
+        assert "Available worktrees" in result.stderr
