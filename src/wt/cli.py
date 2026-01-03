@@ -99,6 +99,10 @@ def new(
         str | None, typer.Option("--base", "-b", help="Base branch")
     ] = None,
     no_ai: Annotated[bool, typer.Option("--no-ai", help="Don't launch AI TUI")] = False,
+    no_push: Annotated[
+        bool,
+        typer.Option("--no-push", help="Don't push branch to remote"),
+    ] = False,
 ) -> None:
     """Create a new worktree for a feature."""
     repo_root = get_validated_repo_root()
@@ -123,6 +127,10 @@ def new(
     worktree_path.parent.mkdir(parents=True, exist_ok=True)
     console.print(f"Creating worktree at [cyan]{worktree_path}[/cyan]...")
     worktree_add(worktree_path, branch, base_branch, cwd=repo_root)
+
+    if not no_push:
+        console.print(f"[dim]Pushing branch '{branch}' to {config.remote}...[/dim]")
+        push_branch(branch, set_upstream=True, cwd=repo_root)
 
     state = WtState.load(get_state_path(repo_root))
     state.add_worktree(normalized, branch, str(worktree_path), base_branch)
