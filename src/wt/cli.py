@@ -307,7 +307,7 @@ def pr(
     if has_uncommitted_changes(cwd=cwd):
         console.print("[yellow]Auto-committing uncommitted changes...[/yellow]")
         git_add_all(cwd=cwd)
-        git_commit(cwd=cwd, message=f"WIP: {current_branch}")
+        git_commit(cwd=cwd, message=f"implement: {current_branch}")
         console.print(f"[green]Created commit:[/green] {current_branch}")
 
     if no_push:
@@ -500,7 +500,7 @@ def merge(
     if not force and has_uncommitted_changes(cwd=cwd):
         console.print("[yellow]Auto-committing uncommitted changes...[/yellow]")
         git_add_all(cwd=cwd)
-        git_commit(cwd=cwd, message=f"WIP: {branch}")
+        git_commit(cwd=cwd, message=f"implement: {branch}")
         console.print(f"[green]Created commit:[/green] {branch}")
 
     if not branch_exists(base_branch, cwd=repo_root):
