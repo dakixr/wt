@@ -42,7 +42,6 @@ from wt.git import (
     get_worktree_root,
     git_add_all,
     git_commit,
-    has_any_commits,
     has_uncommitted_changes,
     has_unpushed_commits,
     is_bare_repo,
@@ -144,9 +143,7 @@ def new(
 
     if not no_push:
         if remote_exists(config.remote, cwd=repo_root):
-            console.print(
-                f"[dim]Pushing branch '{branch}' to {config.remote}...[/dim]"
-            )
+            console.print(f"[dim]Pushing branch '{branch}' to {config.remote}...[/dim]")
             push_branch(branch, set_upstream=True, remote=config.remote, cwd=repo_root)
         else:
             console.print(
@@ -346,9 +343,7 @@ def pr(
 @app.command()
 @error_handler
 def delete(
-    name: Annotated[
-        str | None, typer.Argument(help="Worktree name to delete")
-    ] = None,
+    name: Annotated[str | None, typer.Argument(help="Worktree name to delete")] = None,
     force: Annotated[
         bool,
         typer.Option(
@@ -558,7 +553,9 @@ def path(
 def list_cmd(
     all_flag: Annotated[
         bool,
-        typer.Option("--all", "-a", help="Also show remote branches not tracked locally"),
+        typer.Option(
+            "--all", "-a", help="Also show remote branches not tracked locally"
+        ),
     ] = False,
 ) -> None:
     """List all wt-managed worktrees and optionally remote branches."""
@@ -585,7 +582,9 @@ def list_cmd(
         remote_branches = list_remote_branches(cwd=repo_root)
         for branch in remote_branches:
             if branch not in local_branches:
-                table.add_row("[dim]-[/dim]", branch, "[dim]-[/dim]", "[yellow]remote[/yellow]")
+                table.add_row(
+                    "[dim]-[/dim]", branch, "[dim]-[/dim]", "[yellow]remote[/yellow]"
+                )
 
     console.print(table)
 
