@@ -16,6 +16,7 @@ class WtConfig:
     remote: str = "origin"
     worktrees_dir: str = ".wt/worktrees"
     default_ai_tui: str = "opencode"
+    init_script: str | None = None
 
     @classmethod
     def load(cls, config_path: Path) -> "WtConfig":

@@ -13,16 +13,16 @@ import typer
 from rich.console import Console
 
 from wt import __version__
-from wt.config import ensure_config, ensure_worktrees_gitignore
+from wt.config import ensure_config, ensure_worktrees_gitignore, get_wt_dir
 from wt.errors import (
     BaseBranchNotFoundError,
     BranchExistsError,
     BranchNotFoundError,
     CommandFailedError,
     ExitCode,
-    NoWorktreesError,
     NotInGitRepoError,
     NotInWorktreeError,
+    NoWorktreesError,
     UncommittedChangesError,
     UnpushedCommitsError,
     UsageError,
@@ -32,6 +32,7 @@ from wt.errors import (
 from wt.gh import check_gh_installed, create_pr
 from wt.git import (
     branch_exists,
+    checkout_branch,
     delete_branch,
     delete_remote_branch,
     fetch_branch,
@@ -42,12 +43,14 @@ from wt.git import (
     has_uncommitted_changes,
     has_unpushed_commits,
     is_bare_repo,
+    merge_branch,
     push_branch,
     worktree_add,
     worktree_add_existing,
     worktree_list,
     worktree_remove,
 )
+from wt.init import InitContext, resolve_init_script, run_init_script
 from wt.state import WtState, get_state_path
 from wt.utils import derive_feat_name_from_branch, launch_ai_tui, normalize_feat_name
 
@@ -103,6 +106,12 @@ def new(
         bool,
         typer.Option("--no-push", help="Don't push branch to remote"),
     ] = False,
+    no_init: Annotated[
+        bool, typer.Option("--no-init", help="Skip init script")
+    ] = False,
+    strict_init: Annotated[
+        bool, typer.Option("--strict-init", help="Fail if init script fails")
+    ] = False,
 ) -> None:
     """Create a new worktree for a feature."""
     repo_root = get_validated_repo_root()
@@ -130,7 +139,7 @@ def new(
 
     if not no_push:
         console.print(f"[dim]Pushing branch '{branch}' to {config.remote}...[/dim]")
-        push_branch(branch, set_upstream=True, cwd=repo_root)
+        push_branch(branch, set_upstream=True, remote=config.remote, cwd=repo_root)
 
     state = WtState.load(get_state_path(repo_root))
     state.add_worktree(normalized, branch, str(worktree_path), base_branch)
@@ -138,6 +147,29 @@ def new(
 
     console.print(f"[green]Created worktree:[/green] {worktree_path}")
     console.print(f"[green]Branch:[/green] {branch}")
+
+    # Run init script if configured
+    if not no_init:
+        wt_root = get_wt_dir(repo_root)
+        script = resolve_init_script(config.init_script, wt_root)
+        if script:
+            ctx = InitContext(
+                wt_root=wt_root,
+                repo_root=repo_root,
+                worktree_path=worktree_path,
+                feat_name=normalized,
+                branch=branch,
+                base_branch=base_branch,
+            )
+            success = run_init_script(script, ctx, console, strict=strict_init)
+            if not success and strict_init:
+                # Cleanup: remove worktree and state
+                console.print("[dim]Cleaning up failed worktree...[/dim]")
+                worktree_remove(worktree_path, force=True, cwd=repo_root)
+                delete_branch(branch, force=True, cwd=repo_root)
+                state.remove_worktree(str(worktree_path))
+                state.save(get_state_path(repo_root))
+                raise typer.Exit(1)
 
     if not no_ai:
         launch_ai_tui(config.default_ai_tui, worktree_path)
@@ -152,6 +184,12 @@ def checkout(
     ] = False,
     ai: Annotated[
         bool, typer.Option("--ai", help="Launch AI TUI after checkout")
+    ] = False,
+    no_init: Annotated[
+        bool, typer.Option("--no-init", help="Skip init script")
+    ] = False,
+    strict_init: Annotated[
+        bool, typer.Option("--strict-init", help="Fail if init script fails")
     ] = False,
 ) -> None:
     """Checkout an existing branch into a worktree."""
@@ -192,6 +230,29 @@ def checkout(
         print(worktree_path)
     else:
         console.print(f"[green]Created worktree:[/green] {worktree_path}")
+
+    # Run init script if configured
+    if not no_init:
+        wt_root = get_wt_dir(repo_root)
+        script = resolve_init_script(config.init_script, wt_root)
+        if script:
+            ctx = InitContext(
+                wt_root=wt_root,
+                repo_root=repo_root,
+                worktree_path=worktree_path,
+                feat_name=feat_name,
+                branch=branch,
+                base_branch=config.base_branch,
+            )
+            success = run_init_script(script, ctx, console, strict=strict_init)
+            if not success and strict_init:
+                # Cleanup: remove worktree and state
+                if not print_path:
+                    console.print("[dim]Cleaning up failed worktree...[/dim]")
+                worktree_remove(worktree_path, force=True, cwd=repo_root)
+                state.remove_worktree(str(worktree_path))
+                state.save(get_state_path(repo_root))
+                raise typer.Exit(1)
 
     if ai:
         launch_ai_tui(config.default_ai_tui, worktree_path)
@@ -242,7 +303,9 @@ def pr(
             console.print(
                 f"[dim]Pushing branch '{current_branch}' to {config.remote}...[/dim]"
             )
-            push_branch(current_branch, set_upstream=True, cwd=cwd)
+            push_branch(
+                current_branch, set_upstream=True, remote=config.remote, cwd=cwd
+            )
 
     console.print("[dim]Creating pull request...[/dim]")
     pr_url = create_pr(
@@ -319,6 +382,92 @@ def delete(
     state.save(get_state_path(repo_root))
 
     console.print(f"[green]Deleted worktree and branch:[/green] {branch}")
+
+
+@app.command()
+@error_handler
+def merge(
+    base: Annotated[
+        str | None, typer.Option("--base", "-b", help="Base branch to merge into")
+    ] = None,
+    no_push: Annotated[
+        bool,
+        typer.Option("--no-push", help="Don't push the base branch after merge"),
+    ] = False,
+    force: Annotated[
+        bool,
+        typer.Option(
+            "--force",
+            "-f",
+            help="Proceed even with uncommitted changes (may lose local changes)",
+        ),
+    ] = False,
+    no_ff: Annotated[
+        bool,
+        typer.Option("--no-ff", help="Create a merge commit (disable fast-forward)"),
+    ] = False,
+    ff_only: Annotated[
+        bool,
+        typer.Option("--ff-only", help="Refuse merge unless fast-forward is possible"),
+    ] = False,
+) -> None:
+    """Merge the current worktree branch into the base branch, then delete the worktree."""
+    repo_root = get_validated_repo_root()
+    worktree_root = get_worktree_root(cwd=Path.cwd())
+    if worktree_root == repo_root:
+        raise NotInWorktreeError()
+
+    if no_ff and ff_only:
+        raise UsageError("Cannot use --no-ff and --ff-only together.")
+
+    config = ensure_config(repo_root)
+    cwd = Path.cwd()
+    current_branch = get_current_branch(cwd=cwd)
+
+    state = WtState.load(get_state_path(repo_root))
+    entry = state.find_by_path(str(worktree_root)) or state.find_by_branch(
+        current_branch
+    )
+    if entry is None:
+        raise NotInWorktreeError()
+
+    base_branch = base or entry.base or config.base_branch
+    branch = entry.branch
+    worktree_path = Path(entry.path)
+
+    if not force and has_uncommitted_changes(cwd=cwd):
+        raise UncommittedChangesError()
+
+    if not branch_exists(base_branch, cwd=repo_root):
+        console.print(
+            f"[dim]Fetching base branch '{base_branch}' from {config.remote}...[/dim]"
+        )
+        if not fetch_branch(config.remote, base_branch, cwd=repo_root):
+            raise BaseBranchNotFoundError(base_branch)
+
+    os.chdir(repo_root)
+    console.print(f"[dim]Checking out '{base_branch}'...[/dim]")
+    checkout_branch(base_branch, cwd=repo_root)
+
+    console.print(f"[dim]Merging '{branch}' into '{base_branch}'...[/dim]")
+    merge_branch(branch, no_ff=no_ff, ff_only=ff_only, cwd=repo_root)
+
+    if not no_push:
+        console.print(f"[dim]Pushing '{base_branch}' to {config.remote}...[/dim]")
+        push_branch(base_branch, remote=config.remote, cwd=repo_root)
+
+    console.print(f"[dim]Removing worktree at {worktree_path}...[/dim]")
+    worktree_remove(worktree_path, force=force, cwd=repo_root)
+
+    console.print(f"[dim]Deleting branch '{branch}'...[/dim]")
+    delete_branch(branch, force=force, cwd=repo_root)
+
+    state.remove_worktree(str(worktree_path))
+    state.save(get_state_path(repo_root))
+
+    console.print(
+        f"[green]Merged and deleted worktree:[/green] {branch} -> {base_branch}"
+    )
 
 
 @app.command()
