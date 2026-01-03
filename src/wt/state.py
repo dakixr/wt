@@ -78,6 +78,26 @@ class WtState:
         return None
 
 
+def prune_stale_entries(state: WtState, valid_paths: set[str]) -> bool:
+    """Remove worktree entries whose paths are not in valid_paths.
+
+    Path comparisons are normalized to avoid issues with symlinked paths
+    (e.g. macOS `/var` vs `/private/var`).
+    """
+
+    def normalize(path: str) -> str:
+        return str(Path(path).resolve(strict=False))
+
+    normalized_valid = {normalize(path) for path in valid_paths}
+    original_count = len(state.worktrees)
+    state.worktrees = [
+        item for item in state.worktrees if normalize(item.path) in normalized_valid
+    ]
+    return len(state.worktrees) != original_count
+
+
+
 def get_state_path(repo_root: Path) -> Path:
     """Get the state file path."""
     return repo_root / ".wt" / "state.json"
+

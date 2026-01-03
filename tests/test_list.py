@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
 from subprocess import CompletedProcess
 
@@ -21,6 +22,25 @@ def setup_state(repo: Path, worktrees: list[dict]) -> None:
     state_path.write_text(json.dumps({"worktrees": worktrees}), encoding="utf-8")
 
 
+def add_git_worktree(repo: Path, worktree_path: Path, branch: str, base: str = "develop") -> None:
+    """Register a git worktree so pre-command sync keeps state."""
+    worktree_path.parent.mkdir(parents=True, exist_ok=True)
+    subprocess.run(
+        ["git", "worktree", "add", "-b", branch, str(worktree_path), base],
+        cwd=repo,
+        check=True,
+    )
+
+
+def test_version_bypasses_sync(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(app, ["--version"])
+
+    assert result.exit_code == 0
+    assert "wt version" in result.stdout
+
+
 class TestList:
     def test_list_shows_worktrees(self, git_repo: Path, monkeypatch) -> None:
         worktree_path = git_repo / ".wt/worktrees/my-feature"
@@ -36,6 +56,7 @@ class TestList:
                 }
             ],
         )
+        add_git_worktree(git_repo, worktree_path, "feature/my-feature")
         monkeypatch.chdir(git_repo)
 
         result = runner.invoke(app, ["list"])
@@ -43,6 +64,29 @@ class TestList:
         assert result.exit_code == 0
         assert "my-feature" in result.stdout
         assert "feature/my-feature" in result.stdout
+
+    def test_list_prunes_stale_entries(self, git_repo: Path, monkeypatch) -> None:
+        stale_path = git_repo / ".wt/worktrees/ghost"
+        setup_state(
+            git_repo,
+            [
+                {
+                    "feat_name": "ghost",
+                    "branch": "feature/ghost",
+                    "path": str(stale_path),
+                    "base": "develop",
+                    "created_at": "2026-01-01T00:00:00",
+                }
+            ],
+        )
+        monkeypatch.chdir(git_repo)
+
+        result = runner.invoke(app, ["list"])
+
+        assert result.exit_code != 0
+        state_path = git_repo / ".wt/state.json"
+        data = json.loads(state_path.read_text(encoding="utf-8"))
+        assert data["worktrees"] == []
 
     def test_list_empty_state_no_worktrees(self, git_repo: Path, monkeypatch) -> None:
         setup_state(git_repo, [])

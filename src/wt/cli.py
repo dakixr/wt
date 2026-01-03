@@ -55,13 +55,13 @@ from wt.git import (
     worktree_remove,
 )
 from wt.init import InitContext, resolve_init_script, run_init_script
-from wt.state import WtState, get_state_path
+from wt.state import WtState, get_state_path, prune_stale_entries
 from wt.utils import derive_feat_name_from_branch, launch_ai_tui, normalize_feat_name
 
 app = typer.Typer(
     name="wt",
     help="Git worktree toolkit for feature-branch workflows.",
-    no_args_is_help=True,
+    invoke_without_command=True,
 )
 console = Console()
 
@@ -96,6 +96,16 @@ def get_validated_repo_root() -> Path:
     if is_bare_repo(cwd=root):
         raise NotInGitRepoError()
     return root
+
+
+def sync_state(repo_root: Path) -> None:
+    """Best-effort sync of state.json against git worktrees."""
+    state_path = get_state_path(repo_root)
+    state = WtState.load(state_path)
+    worktrees = worktree_list(cwd=repo_root)
+    valid_paths = {entry["path"] for entry in worktrees if entry.get("path")}
+    if prune_stale_entries(state, valid_paths):
+        state.save(state_path)
 
 
 @app.command()
@@ -612,6 +622,7 @@ def list_cmd(
 
 @app.callback()
 def main(
+    ctx: typer.Context,
     version: Annotated[
         bool, typer.Option("--version", "-v", help="Show version")
     ] = False,
@@ -620,6 +631,25 @@ def main(
     if version:
         console.print(f"wt version {__version__}")
         raise typer.Exit(ExitCode.SUCCESS)
+
+    if ctx.invoked_subcommand is None:
+        typer.echo(ctx.get_help())
+        raise typer.Exit(ExitCode.SUCCESS)
+
+    try:
+        repo_root = get_validated_repo_root()
+    except WtError:
+        return
+
+    try:
+        sync_state(repo_root)
+    except subprocess.CalledProcessError as exc:
+        console.print(
+            "[yellow]Warning:[/yellow] Failed to sync state: "
+            f"{exc.stderr or 'unknown error'}"
+        )
+    except Exception as exc:
+        console.print(f"[yellow]Warning:[/yellow] Failed to sync state: {exc}")
 
 
 if __name__ == "__main__":

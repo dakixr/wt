@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from pathlib import Path
 
 import typer
@@ -20,6 +21,16 @@ def setup_state(repo: Path, worktrees: list[dict]) -> None:
     state_path.write_text(json.dumps({"worktrees": worktrees}), encoding="utf-8")
 
 
+def add_git_worktree(repo: Path, worktree_path: Path, branch: str, base: str = "develop") -> None:
+    """Register a git worktree so pre-command sync keeps state."""
+    worktree_path.parent.mkdir(parents=True, exist_ok=True)
+    subprocess.run(
+        ["git", "worktree", "add", "-b", branch, str(worktree_path), base],
+        cwd=repo,
+        check=True,
+    )
+
+
 class TestPathByName:
     def test_success(self, git_repo: Path, monkeypatch) -> None:
         worktree_path = git_repo / ".wt/worktrees/my-feature"
@@ -35,6 +46,7 @@ class TestPathByName:
                 }
             ],
         )
+        add_git_worktree(git_repo, worktree_path, "feature/my-feature")
         monkeypatch.chdir(git_repo)
 
         result = runner.invoke(app, ["path", "my-feature"])
@@ -76,6 +88,7 @@ class TestPathNoArgs:
                 }
             ],
         )
+        add_git_worktree(git_repo, worktree_path, "feature/my-feature")
         monkeypatch.chdir(git_repo)
         monkeypatch.setattr(typer, "prompt", lambda *args, **kwargs: 1)
 
