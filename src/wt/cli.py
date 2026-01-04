@@ -36,7 +36,10 @@ from wt.git import (
     delete_branch,
     delete_remote_branch,
     fetch_branch,
+    get_ahead_behind,
+    get_branch_merged_status,
     get_current_branch,
+    get_last_commit_time,
     get_repo_root,
     get_upstream_branch,
     get_worktree_root,
@@ -590,6 +593,8 @@ def list_cmd(
     ] = False,
 ) -> None:
     """List all wt-managed worktrees and optionally remote branches."""
+    from datetime import datetime
+
     from rich.table import Table
 
     repo_root = get_validated_repo_root()
@@ -600,24 +605,326 @@ def list_cmd(
     if not state.worktrees and not all_flag:
         raise NoWorktreesError()
 
+    def format_relative_time(iso_time: str | None) -> str:
+        """Format ISO timestamp as relative time."""
+        if not iso_time:
+            return "[dim]-[/dim]"
+        try:
+            # Parse ISO format, handle timezone
+            time_str = iso_time.replace("Z", "+00:00")
+            if "+" in time_str or time_str.endswith("Z"):
+                # Has timezone info
+                dt = datetime.fromisoformat(time_str)
+            else:
+                dt = datetime.fromisoformat(time_str)
+            now = datetime.now(dt.tzinfo) if dt.tzinfo else datetime.now()
+            diff = now - dt
+            seconds = diff.total_seconds()
+            if seconds < 60:
+                return "just now"
+            elif seconds < 3600:
+                mins = int(seconds // 60)
+                return f"{mins}m ago"
+            elif seconds < 86400:
+                hours = int(seconds // 3600)
+                return f"{hours}h ago"
+            elif seconds < 604800:
+                days = int(seconds // 86400)
+                return f"{days}d ago"
+            elif seconds < 2592000:
+                weeks = int(seconds // 604800)
+                return f"{weeks}w ago"
+            else:
+                months = int(seconds // 2592000)
+                return f"{months}mo ago"
+        except Exception:
+            return "[dim]-[/dim]"
+
+    def format_ahead_behind(ahead: int, behind: int) -> str:
+        """Format ahead/behind as a compact string."""
+        if ahead == 0 and behind == 0:
+            return "[dim]-[/dim]"
+        parts = []
+        if ahead > 0:
+            parts.append(f"[green]+{ahead}[/green]")
+        if behind > 0:
+            parts.append(f"[red]-{behind}[/red]")
+        return " ".join(parts)
+
     table = Table(title="Worktrees")
-    table.add_column("feat_name", style="cyan")
+    table.add_column("name", style="cyan")
     table.add_column("branch")
-    table.add_column("path", style="dim")
-    table.add_column("type", style="yellow")
+    table.add_column("status")
+    table.add_column("sync")
+    table.add_column("activity", style="dim")
 
     for wt in state.worktrees:
-        table.add_row(wt.feat_name, wt.branch, wt.path, "local")
+        wt_path = Path(wt.path)
+        if wt_path.exists():
+            is_dirty = has_uncommitted_changes(cwd=wt_path)
+            status = "[yellow]dirty[/yellow]" if is_dirty else "[green]clean[/green]"
+            ahead, behind = get_ahead_behind(cwd=wt_path)
+            sync_status = format_ahead_behind(ahead, behind)
+            last_commit = get_last_commit_time(cwd=wt_path)
+            activity = format_relative_time(last_commit)
+        else:
+            status = "[red]missing[/red]"
+            sync_status = "[dim]-[/dim]"
+            activity = "[dim]-[/dim]"
+
+        table.add_row(wt.feat_name, wt.branch, status, sync_status, activity)
 
     if all_flag:
         remote_branches = list_remote_branches(cwd=repo_root)
         for branch in remote_branches:
             if branch not in local_branches:
                 table.add_row(
-                    "[dim]-[/dim]", branch, "[dim]-[/dim]", "[yellow]remote[/yellow]"
+                    "[dim]-[/dim]",
+                    f"[yellow]{branch}[/yellow]",
+                    "[dim]remote[/dim]",
+                    "[dim]-[/dim]",
+                    "[dim]-[/dim]",
                 )
 
     console.print(table)
+
+
+@app.command()
+@error_handler
+def status(
+    name: Annotated[str | None, typer.Argument(help="Worktree name")] = None,
+) -> None:
+    """Show detailed status for a worktree (or current worktree)."""
+    from datetime import datetime
+
+    from rich.panel import Panel
+    from rich.table import Table
+
+    repo_root = get_validated_repo_root()
+    state = WtState.load(get_state_path(repo_root))
+    config = ensure_config(repo_root)
+    cwd = Path.cwd()
+    worktree_root = get_worktree_root(cwd=cwd)
+
+    if name is not None:
+        entry = state.find_by_feat_name(name)
+        if entry is None:
+            entry = state.find_by_branch(name)
+        if entry is None:
+            raise WorktreeNotFoundError(name)
+    elif worktree_root != repo_root:
+        current_branch = get_current_branch(cwd=cwd)
+        entry = state.find_by_path(str(worktree_root)) or state.find_by_branch(
+            current_branch
+        )
+        if entry is None:
+            raise NotInWorktreeError()
+    else:
+        if not state.worktrees:
+            raise NoWorktreesError()
+        if not sys.stdin.isatty():
+            raise UsageError(
+                "Worktree name required when not in interactive mode.",
+                suggestion="Run 'wt status <name>'.",
+            )
+        prompt_console = Console(stderr=True)
+        prompt_console.print("[bold]Available worktrees:[/bold]")
+        for idx, wt in enumerate(state.worktrees, start=1):
+            prompt_console.print(f"  {idx}. {wt.feat_name} [dim]({wt.branch})[/dim]")
+        choice = typer.prompt("Select worktree", type=int)
+        if choice < 1 or choice > len(state.worktrees):
+            raise UsageError("Invalid selection.")
+        entry = state.worktrees[choice - 1]
+
+    wt_path = Path(entry.path)
+    path_exists = wt_path.exists()
+
+    # Collect status info
+    info_table = Table.grid(padding=(0, 2))
+    info_table.add_column(style="bold")
+    info_table.add_column()
+
+    info_table.add_row("Feature:", entry.feat_name)
+    info_table.add_row("Branch:", entry.branch)
+    info_table.add_row("Base:", entry.base)
+    info_table.add_row("Path:", entry.path)
+    info_table.add_row("Created:", entry.created_at[:19] if entry.created_at else "-")
+
+    if path_exists:
+        is_dirty = has_uncommitted_changes(cwd=wt_path)
+        status_str = "[yellow]dirty[/yellow]" if is_dirty else "[green]clean[/green]"
+        info_table.add_row("Status:", status_str)
+
+        ahead, behind = get_ahead_behind(cwd=wt_path)
+        if ahead == 0 and behind == 0:
+            sync_str = "[green]in sync[/green]"
+        else:
+            parts = []
+            if ahead > 0:
+                parts.append(f"[green]{ahead} ahead[/green]")
+            if behind > 0:
+                parts.append(f"[red]{behind} behind[/red]")
+            sync_str = ", ".join(parts)
+        info_table.add_row("Sync:", sync_str)
+
+        last_commit = get_last_commit_time(cwd=wt_path)
+        if last_commit:
+            try:
+                dt = datetime.fromisoformat(last_commit.replace("Z", "+00:00"))
+                info_table.add_row("Last commit:", dt.strftime("%Y-%m-%d %H:%M"))
+            except Exception:
+                info_table.add_row("Last commit:", last_commit[:19])
+        else:
+            info_table.add_row("Last commit:", "-")
+
+        # Check merge status
+        merged = get_branch_merged_status(entry.branch, entry.base, cwd=repo_root)
+        merge_str = "[green]merged[/green]" if merged else "[yellow]not merged[/yellow]"
+        info_table.add_row("Merged to base:", merge_str)
+    else:
+        info_table.add_row("Status:", "[red]path missing[/red]")
+
+    # Per-worktree config (if any)
+    wt_config_path = wt_path / ".wt.json" if path_exists else None
+    if wt_config_path and wt_config_path.exists():
+        import json
+
+        try:
+            with wt_config_path.open("r", encoding="utf-8") as f:
+                wt_config = json.load(f)
+            info_table.add_row("", "")
+            info_table.add_row("[bold]Worktree Config:[/bold]", "")
+            for key, value in wt_config.items():
+                info_table.add_row(f"  {key}:", str(value))
+        except Exception:
+            pass
+
+    console.print(Panel(info_table, title=f"[bold]{entry.feat_name}[/bold]", expand=False))
+
+
+@app.command()
+@error_handler
+def clean(
+    dry_run: Annotated[
+        bool,
+        typer.Option("--dry-run", "-n", help="Show what would be deleted without doing it"),
+    ] = False,
+    force: Annotated[
+        bool,
+        typer.Option("--force", "-f", help="Skip confirmation prompt"),
+    ] = False,
+    merged: Annotated[
+        bool,
+        typer.Option("--merged", "-m", help="Only clean worktrees merged into their base"),
+    ] = False,
+) -> None:
+    """Clean up worktrees that are fully merged or stale.
+
+    By default, only shows candidates for cleanup. Use --force to skip confirmation.
+    """
+    from rich.table import Table
+
+    repo_root = get_validated_repo_root()
+    state = WtState.load(get_state_path(repo_root))
+    config = ensure_config(repo_root)
+
+    if not state.worktrees:
+        console.print("[dim]No worktrees to clean.[/dim]")
+        return
+
+    candidates: list[tuple[str, str, str, str]] = []  # (feat_name, branch, path, reason)
+
+    for wt in state.worktrees:
+        wt_path = Path(wt.path)
+
+        # Check if path exists
+        if not wt_path.exists():
+            candidates.append((wt.feat_name, wt.branch, wt.path, "path missing"))
+            continue
+
+        # Only clean merged branches if --merged is set or checking all
+        if merged:
+            is_merged = get_branch_merged_status(wt.branch, wt.base, cwd=repo_root)
+            if is_merged:
+                # Extra safety: check for uncommitted changes
+                if has_uncommitted_changes(cwd=wt_path):
+                    candidates.append(
+                        (wt.feat_name, wt.branch, wt.path, "merged (has uncommitted)")
+                    )
+                else:
+                    candidates.append((wt.feat_name, wt.branch, wt.path, "merged"))
+
+    if not candidates:
+        console.print("[green]No worktrees eligible for cleanup.[/green]")
+        return
+
+    # Show what would be cleaned
+    table = Table(title="Worktrees to clean" if not dry_run else "Would clean (dry run)")
+    table.add_column("name", style="cyan")
+    table.add_column("branch")
+    table.add_column("reason", style="yellow")
+
+    for feat_name, branch, path, reason in candidates:
+        table.add_row(feat_name, branch, reason)
+
+    console.print(table)
+
+    if dry_run:
+        console.print(
+            f"\n[dim]Run without --dry-run to clean {len(candidates)} worktree(s).[/dim]"
+        )
+        return
+
+    # Confirm unless --force
+    if not force:
+        if not sys.stdin.isatty():
+            console.print(
+                "[yellow]Use --force to clean without confirmation in non-interactive mode.[/yellow]"
+            )
+            raise typer.Exit(1)
+        confirm = typer.confirm(
+            f"Delete {len(candidates)} worktree(s)?", default=False, err=True
+        )
+        if not confirm:
+            console.print("[dim]Cancelled.[/dim]")
+            raise typer.Exit(0)
+
+    # Perform cleanup
+    deleted = 0
+    for feat_name, branch, path, reason in candidates:
+        wt_path = Path(path)
+        try:
+            console.print(f"[dim]Removing {feat_name}...[/dim]")
+
+            # Remove worktree if path exists
+            if wt_path.exists():
+                worktree_remove(wt_path, force=True, cwd=repo_root)
+            else:
+                # Try to prune if path is missing
+                try:
+                    from wt.git import run_git
+                    run_git("worktree", "prune", cwd=repo_root)
+                except Exception:
+                    pass
+
+            # Delete branch
+            try:
+                delete_branch(branch, force=True, cwd=repo_root)
+            except subprocess.CalledProcessError:
+                console.print(
+                    f"[yellow]Warning:[/yellow] Could not delete branch '{branch}'"
+                )
+
+            # Update state
+            state.remove_worktree(path)
+            deleted += 1
+        except Exception as exc:
+            console.print(
+                f"[yellow]Warning:[/yellow] Failed to clean {feat_name}: {exc}"
+            )
+
+    state.save(get_state_path(repo_root))
+    console.print(f"[green]Cleaned {deleted} worktree(s).[/green]")
 
 
 @app.callback()

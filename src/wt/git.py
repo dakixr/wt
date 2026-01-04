@@ -239,3 +239,38 @@ def list_remote_branches(cwd: Path | None = None) -> list[str]:
         if line.startswith("origin/"):
             branches.append(line[7:])
     return branches
+
+
+def get_ahead_behind(cwd: Path | None = None) -> tuple[int, int]:
+    """Get ahead/behind counts relative to upstream.
+
+    Returns (ahead, behind) tuple. Returns (0, 0) if no upstream.
+    """
+    result = run_git(
+        "rev-list", "--left-right", "--count", "@{u}...HEAD", cwd=cwd, check=False
+    )
+    if result.returncode != 0:
+        return (0, 0)
+    parts = result.stdout.strip().split()
+    if len(parts) != 2:
+        return (0, 0)
+    behind, ahead = int(parts[0]), int(parts[1])
+    return (ahead, behind)
+
+
+def get_last_commit_time(cwd: Path | None = None) -> str | None:
+    """Get the timestamp of the last commit in ISO format."""
+    result = run_git(
+        "log", "-1", "--format=%cI", cwd=cwd, check=False
+    )
+    if result.returncode != 0:
+        return None
+    return result.stdout.strip() or None
+
+
+def get_branch_merged_status(branch: str, base: str, cwd: Path | None = None) -> bool:
+    """Check if branch is fully merged into base."""
+    result = run_git(
+        "merge-base", "--is-ancestor", branch, base, cwd=cwd, check=False
+    )
+    return result.returncode == 0
