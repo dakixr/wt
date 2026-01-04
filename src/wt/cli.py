@@ -13,7 +13,13 @@ import typer
 from rich.console import Console
 
 from wt import __version__
-from wt.config import ensure_config, ensure_worktrees_gitignore, get_wt_dir
+from wt.config import (
+    WtConfig,
+    ensure_config,
+    ensure_worktrees_gitignore,
+    get_config_path,
+    get_wt_dir,
+)
 from wt.errors import (
     BaseBranchNotFoundError,
     BranchExistsError,
@@ -109,6 +115,109 @@ def sync_state(repo_root: Path) -> None:
     valid_paths = {entry["path"] for entry in worktrees if entry.get("path")}
     if prune_stale_entries(state, valid_paths):
         state.save(state_path)
+
+
+@app.command()
+@error_handler
+def init(
+    branch_prefix: Annotated[
+        str | None,
+        typer.Option("--branch-prefix", help="Branch prefix for feature branches"),
+    ] = None,
+    base: Annotated[
+        str | None, typer.Option("--base", "-b", help="Base branch for new worktrees")
+    ] = None,
+    remote: Annotated[
+        str | None, typer.Option("--remote", help="Remote name for push/fetch")
+    ] = None,
+    worktrees_dir: Annotated[
+        str | None,
+        typer.Option("--worktrees-dir", help="Directory (relative to repo) for worktrees"),
+    ] = None,
+    default_ai_tui: Annotated[
+        str | None, typer.Option("--default-ai-tui", help="Default AI TUI to launch")
+    ] = None,
+    init_script: Annotated[
+        str | None,
+        typer.Option(
+            "--init-script",
+            help="Command/path to run after creating/checking out a worktree",
+        ),
+    ] = None,
+    hook: Annotated[
+        bool,
+        typer.Option(
+            "--hook",
+            help="Create a starter .wt/hooks/init.sh (used if init_script is unset)",
+        ),
+    ] = False,
+    force: Annotated[
+        bool,
+        typer.Option("--force", "-f", help="Overwrite existing wt config (and hook)"),
+    ] = False,
+) -> None:
+    """Initialize wt in the current git repository."""
+    repo_root = get_validated_repo_root()
+    wt_root = get_wt_dir(repo_root)
+    config_path = get_config_path(repo_root)
+
+    has_any_overrides = any(
+        opt is not None
+        for opt in (branch_prefix, base, remote, worktrees_dir, default_ai_tui, init_script)
+    )
+
+    if config_path.exists() and not force and not has_any_overrides and not hook:
+        ensure_worktrees_gitignore(repo_root)
+        console.print(f"[green]Already initialized:[/green] {wt_root}")
+        return
+
+    if config_path.exists() and not force:
+        config = WtConfig.load(config_path)
+    else:
+        config = WtConfig()
+
+    if branch_prefix is not None:
+        config.branch_prefix = branch_prefix
+    if base is not None:
+        config.base_branch = base
+    if remote is not None:
+        config.remote = remote
+    if worktrees_dir is not None:
+        config.worktrees_dir = worktrees_dir
+    if default_ai_tui is not None:
+        config.default_ai_tui = default_ai_tui
+    if init_script is not None:
+        config.init_script = init_script
+
+    config.save(config_path)
+    ensure_worktrees_gitignore(repo_root)
+
+    worktrees_path = Path(config.worktrees_dir)
+    if not worktrees_path.is_absolute():
+        worktrees_path = repo_root / worktrees_path
+    worktrees_path.mkdir(parents=True, exist_ok=True)
+
+    if hook:
+        hooks_dir = wt_root / "hooks"
+        hooks_dir.mkdir(parents=True, exist_ok=True)
+        init_sh = hooks_dir / "init.sh"
+        if not init_sh.exists() or force:
+            init_sh.write_text(
+                "#!/bin/sh\n"
+                "# wt init hook\n"
+                "set -e\n\n"
+                'echo \"wt: setting up $WT_FEAT_NAME in $WT_WORKTREE_PATH (base=$WT_BASE_BRANCH)\" \n\n'
+                "# Example: install deps\n"
+                "# uv sync\n",
+                encoding="utf-8",
+            )
+            try:
+                init_sh.chmod(0o755)
+            except OSError:
+                # Best-effort; some filesystems may not support chmod.
+                pass
+
+    console.print(f"[green]Initialized wt:[/green] {wt_root}")
 
 
 @app.command()
