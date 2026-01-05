@@ -85,21 +85,20 @@ Example `.wt/hooks/init.sh`:
 set -e
 echo "Setting up $WT_FEAT_NAME..."
 uv sync
-cp "$WT_BASE_BRANCH_PATH/.env" .env
+cp "$WT_REPO_ROOT/.env" .env
 ```
 
 ### Available Environment Variables
 The following variables are available to your init scripts:
 
-| Variable | Description |
-|----------|-------------|
-| `WT_ROOT` | The `.wt` directory path |
-| `WT_REPO_ROOT` | The main repository root path |
-| `WT_WORKTREE_PATH` | The path to the newly created worktree |
-| `WT_FEAT_NAME` | The normalized feature name |
-| `WT_BRANCH` | The full branch name |
-| `WT_BASE_BRANCH` | The base branch used for creation |
-| `WT_BASE_BRANCH_PATH` | Path to the main checkout (non-wt path), useful for copying `.env` files |
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `WT_ROOT` | The `.wt` directory path | `/home/user/myrepo/.wt` |
+| `WT_REPO_ROOT` | The main repository root path | `/home/user/myrepo` |
+| `WT_WORKTREE_PATH` | The path to the newly created worktree | `/home/user/myrepo/.wt/worktrees/login-page` |
+| `WT_FEAT_NAME` | The normalized feature name | `login-page` |
+| `WT_BRANCH` | The full branch name | `feature/login-page` |
+| `WT_BASE_BRANCH` | The base branch used for creation | `develop` |
 
 ## Configuration
 
