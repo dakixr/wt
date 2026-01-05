@@ -296,6 +296,7 @@ def new(
                 feat_name=normalized,
                 branch=branch,
                 base_branch=base_branch,
+                base_branch_path=repo_root,
             )
             success = run_init_script(script, ctx, console, strict=strict_init)
             if not success and strict_init:
@@ -379,6 +380,7 @@ def checkout(
                 feat_name=feat_name,
                 branch=branch,
                 base_branch=config.base_branch,
+                base_branch_path=repo_root,
             )
             success = run_init_script(script, ctx, console, strict=strict_init)
             if not success and strict_init:

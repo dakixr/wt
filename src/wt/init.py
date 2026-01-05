@@ -20,6 +20,7 @@ class InitContext:
     feat_name: str  # Feature name
     branch: str  # Full branch name
     base_branch: str  # Base branch
+    base_branch_path: Path  # Path to main checkout (non-wt path)
 
 
 def build_init_env(ctx: InitContext) -> dict[str, str]:
@@ -33,6 +34,7 @@ def build_init_env(ctx: InitContext) -> dict[str, str]:
             "WT_FEAT_NAME": ctx.feat_name,
             "WT_BRANCH": ctx.branch,
             "WT_BASE_BRANCH": ctx.base_branch,
+            "WT_BASE_BRANCH_PATH": str(ctx.base_branch_path),
         }
     )
     return env

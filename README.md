@@ -85,7 +85,7 @@ Example `.wt/hooks/init.sh`:
 set -e
 echo "Setting up $WT_FEAT_NAME..."
 uv sync
-cp ../../.env.template .env
+cp "$WT_BASE_BRANCH_PATH/.env" .env
 ```
 
 ### Available Environment Variables
@@ -99,6 +99,7 @@ The following variables are available to your init scripts:
 | `WT_FEAT_NAME` | The normalized feature name |
 | `WT_BRANCH` | The full branch name |
 | `WT_BASE_BRANCH` | The base branch used for creation |
+| `WT_BASE_BRANCH_PATH` | Path to the main checkout (non-wt path), useful for copying `.env` files |
 
 ## Configuration
 

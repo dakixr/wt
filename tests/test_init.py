@@ -15,6 +15,7 @@ class TestBuildInitEnv:
             feat_name="feat",
             branch="feature/feat",
             base_branch="develop",
+            base_branch_path=Path("/repo"),
         )
         env = build_init_env(ctx)
 
@@ -24,6 +25,7 @@ class TestBuildInitEnv:
         assert env["WT_FEAT_NAME"] == "feat"
         assert env["WT_BRANCH"] == "feature/feat"
         assert env["WT_BASE_BRANCH"] == "develop"
+        assert env["WT_BASE_BRANCH_PATH"] == "/repo"
 
     def test_preserves_existing_env(self, monkeypatch) -> None:
         monkeypatch.setenv("MY_VAR", "my_value")
@@ -34,6 +36,7 @@ class TestBuildInitEnv:
             feat_name="feat",
             branch="feature/feat",
             base_branch="develop",
+            base_branch_path=Path("/repo"),
         )
         env = build_init_env(ctx)
 
@@ -91,6 +94,7 @@ class TestRunInitScript:
             feat_name="feat",
             branch="feature/feat",
             base_branch="develop",
+            base_branch_path=tmp_path,
         )
         console = MagicMock()
 
@@ -108,6 +112,7 @@ class TestRunInitScript:
             feat_name="feat",
             branch="feature/feat",
             base_branch="develop",
+            base_branch_path=tmp_path,
         )
         console = MagicMock()
 
@@ -126,6 +131,7 @@ class TestRunInitScript:
             feat_name="feat",
             branch="feature/feat",
             base_branch="develop",
+            base_branch_path=tmp_path,
         )
         console = MagicMock()
 
@@ -145,6 +151,7 @@ class TestRunInitScript:
             feat_name="my-feature",
             branch="feature/my-feature",
             base_branch="main",
+            base_branch_path=tmp_path,
         )
         console = MagicMock()
 
@@ -167,6 +174,7 @@ class TestRunInitScript:
             feat_name="feat",
             branch="feature/feat",
             base_branch="develop",
+            base_branch_path=tmp_path,
         )
         console = MagicMock()
 
