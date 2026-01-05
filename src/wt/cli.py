@@ -57,7 +57,6 @@ from wt.git import (
     list_remote_branches,
     merge_branch,
     push_branch,
-    remote_exists,
     worktree_add,
     worktree_add_existing,
     worktree_list,
@@ -132,7 +131,9 @@ def init(
     ] = None,
     worktrees_dir: Annotated[
         str | None,
-        typer.Option("--worktrees-dir", help="Directory (relative to repo) for worktrees"),
+        typer.Option(
+            "--worktrees-dir", help="Directory (relative to repo) for worktrees"
+        ),
     ] = None,
     default_ai_tui: Annotated[
         str | None, typer.Option("--default-ai-tui", help="Default AI TUI to launch")
@@ -163,7 +164,14 @@ def init(
 
     has_any_overrides = any(
         opt is not None
-        for opt in (branch_prefix, base, remote, worktrees_dir, default_ai_tui, init_script)
+        for opt in (
+            branch_prefix,
+            base,
+            remote,
+            worktrees_dir,
+            default_ai_tui,
+            init_script,
+        )
     )
 
     if config_path.exists() and not force and not has_any_overrides and not hook:
@@ -206,7 +214,7 @@ def init(
                 "#!/bin/sh\n"
                 "# wt init hook\n"
                 "set -e\n\n"
-                'echo \"wt: setting up $WT_FEAT_NAME in $WT_WORKTREE_PATH (base=$WT_BASE_BRANCH)\" \n\n'
+                'echo "wt: setting up $WT_FEAT_NAME in $WT_WORKTREE_PATH (base=$WT_BASE_BRANCH)" \n\n'
                 "# Example: install deps\n"
                 "# uv sync\n",
                 encoding="utf-8",
@@ -263,19 +271,8 @@ def new(
     console.print(f"Creating worktree at [cyan]{worktree_path}[/cyan]...")
     worktree_add(worktree_path, branch, base_branch, cwd=repo_root)
 
-    if not no_push:
-        if remote_exists(config.remote, cwd=repo_root):
-            console.print(f"[dim]Pushing branch '{branch}' to {config.remote}...[/dim]")
-            push_branch(branch, set_upstream=True, remote=config.remote, cwd=repo_root)
-        else:
-            console.print(
-                f"[yellow]Warning:[/yellow] Remote '{config.remote}' not found. "
-                "Skipping push."
-            )
-            console.print(
-                "[dim]Suggestion:[/dim] Add a remote with "
-                f"'git remote add {config.remote} <url>' or use --no-push."
-            )
+    # Note: Branch is created locally only. It will be pushed to remote
+    # when creating a pull request with `wt pr`.
 
     state = WtState.load(get_state_path(repo_root))
     state.add_worktree(normalized, branch, str(worktree_path), base_branch)
@@ -639,9 +636,7 @@ def merge(
     console.print(f"[dim]Merging '{branch}' into '{base_branch}'...[/dim]")
     merge_branch(branch, no_ff=no_ff, ff_only=ff_only, cwd=repo_root)
 
-    if not no_push:
-        console.print(f"[dim]Pushing '{base_branch}' to {config.remote}...[/dim]")
-        push_branch(base_branch, remote=config.remote, cwd=repo_root)
+    # Note: Base branch is merged locally only. Push manually if needed.
 
     console.print(f"[dim]Removing worktree at {worktree_path}...[/dim]")
     worktree_remove(worktree_path, force=force, cwd=repo_root)
@@ -811,7 +806,6 @@ def status(
 
     repo_root = get_validated_repo_root()
     state = WtState.load(get_state_path(repo_root))
-    config = ensure_config(repo_root)
     cwd = Path.cwd()
     worktree_root = get_worktree_root(cwd=cwd)
 
@@ -908,7 +902,9 @@ def status(
         except Exception:
             pass
 
-    console.print(Panel(info_table, title=f"[bold]{entry.feat_name}[/bold]", expand=False))
+    console.print(
+        Panel(info_table, title=f"[bold]{entry.feat_name}[/bold]", expand=False)
+    )
 
 
 @app.command()
@@ -916,7 +912,9 @@ def status(
 def clean(
     dry_run: Annotated[
         bool,
-        typer.Option("--dry-run", "-n", help="Show what would be deleted without doing it"),
+        typer.Option(
+            "--dry-run", "-n", help="Show what would be deleted without doing it"
+        ),
     ] = False,
     force: Annotated[
         bool,
@@ -924,7 +922,9 @@ def clean(
     ] = False,
     merged: Annotated[
         bool,
-        typer.Option("--merged", "-m", help="Only clean worktrees merged into their base"),
+        typer.Option(
+            "--merged", "-m", help="Only clean worktrees merged into their base"
+        ),
     ] = False,
 ) -> None:
     """Clean up worktrees that are fully merged or stale.
@@ -935,13 +935,14 @@ def clean(
 
     repo_root = get_validated_repo_root()
     state = WtState.load(get_state_path(repo_root))
-    config = ensure_config(repo_root)
 
     if not state.worktrees:
         console.print("[dim]No worktrees to clean.[/dim]")
         return
 
-    candidates: list[tuple[str, str, str, str]] = []  # (feat_name, branch, path, reason)
+    candidates: list[
+        tuple[str, str, str, str]
+    ] = []  # (feat_name, branch, path, reason)
 
     for wt in state.worktrees:
         wt_path = Path(wt.path)
@@ -968,7 +969,9 @@ def clean(
         return
 
     # Show what would be cleaned
-    table = Table(title="Worktrees to clean" if not dry_run else "Would clean (dry run)")
+    table = Table(
+        title="Worktrees to clean" if not dry_run else "Would clean (dry run)"
+    )
     table.add_column("name", style="cyan")
     table.add_column("branch")
     table.add_column("reason", style="yellow")
@@ -1012,6 +1015,7 @@ def clean(
                 # Try to prune if path is missing
                 try:
                     from wt.git import run_git
+
                     run_git("worktree", "prune", cwd=repo_root)
                 except Exception:
                     pass
