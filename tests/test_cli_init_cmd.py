@@ -82,7 +82,8 @@ def test_init_force_overwrites_to_defaults(git_repo: Path, monkeypatch) -> None:
 
     result = runner.invoke(app, ["init", "--force"])
     assert result.exit_code == 0
-    assert read_config(git_repo)["base_branch"] == "develop"
+    # With --force, it resets to current branch (main) instead of hard-coded "develop"
+    assert read_config(git_repo)["base_branch"] == "main"
 
 
 def test_init_hook_creates_template(git_repo: Path, monkeypatch) -> None:

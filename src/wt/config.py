@@ -54,6 +54,10 @@ def ensure_config(repo_root: Path) -> WtConfig:
     config_path = get_config_path(repo_root)
     config = WtConfig.load(config_path)
     if not config_path.exists():
+        # Detect current branch as default base_branch
+        from wt.git import get_current_branch
+        current_branch = get_current_branch(cwd=repo_root)
+        config.base_branch = current_branch
         config.save(config_path)
     return config
 

@@ -183,6 +183,10 @@ def init(
         config = WtConfig.load(config_path)
     else:
         config = WtConfig()
+        # If base is not explicitly provided, use current branch
+        if base is None:
+            current_branch = get_current_branch(cwd=repo_root)
+            config.base_branch = current_branch
 
     if branch_prefix is not None:
         config.branch_prefix = branch_prefix

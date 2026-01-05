@@ -41,7 +41,8 @@ def test_merge_merges_into_base_and_deletes_worktree(git_repo: Path, monkeypatch
     )
     assert branch_list.stdout.strip() == ""
 
-    subprocess.run(["git", "checkout", "develop"], cwd=git_repo, check=True)
+    # Base branch is now the current branch at init time (main), not hard-coded "develop"
+    subprocess.run(["git", "checkout", "main"], cwd=git_repo, check=True)
     assert (git_repo / "feature.txt").exists()
 
     state_path = git_repo / ".wt" / "state.json"
