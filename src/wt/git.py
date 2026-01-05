@@ -138,6 +138,27 @@ def has_uncommitted_changes(cwd: Path | None = None) -> bool:
     return bool(result.stdout.strip())
 
 
+def has_unstaged_files(cwd: Path | None = None) -> bool:
+    """Check for unstaged files (unstaged modifications or untracked files)."""
+    result = run_git("status", "--porcelain", cwd=cwd)
+    output = result.stdout.strip()
+    if not output:
+        return False
+    
+    for line in output.split("\n"):
+        line = line.strip()
+        if not line:
+            continue
+        # Untracked files start with ??
+        if line.startswith("??"):
+            return True
+        # If line has at least 2 characters and second char is not space, there's unstaged changes
+        if len(line) >= 2 and line[1] != " ":
+            return True
+    
+    return False
+
+
 def has_unpushed_commits(cwd: Path | None = None) -> bool:
     """Check for unpushed commits relative to upstream."""
     result = run_git("rev-list", "@{u}..HEAD", "--count", cwd=cwd, check=False)

@@ -53,6 +53,7 @@ from wt.git import (
     git_commit,
     has_uncommitted_changes,
     has_unpushed_commits,
+    has_unstaged_files,
     is_bare_repo,
     list_remote_branches,
     merge_branch,
@@ -255,6 +256,23 @@ def new(
     repo_root = get_validated_repo_root()
     config = ensure_config(repo_root)
     ensure_worktrees_gitignore(repo_root)
+
+    # Check for unstaged files in current branch
+    current_branch = get_current_branch(cwd=repo_root)
+    if has_unstaged_files(cwd=repo_root):
+        console.print(
+            f"[yellow]Warning:[/yellow] The current checkout branch '{current_branch}' "
+            "has some unstaged files."
+        )
+        console.print(
+            "[dim]Creating a worktree with unstaged files can sometimes lead to errors. "
+            "You may want to create a commit before creating the worktree.[/dim]"
+        )
+        if not typer.confirm("Do you want to cancel this operation?", default=False):
+            console.print("[dim]Continuing with worktree creation...[/dim]")
+        else:
+            console.print("[dim]Cancelled.[/dim]")
+            raise typer.Exit(0)
 
     normalized = normalize_feat_name(feat_name)
     branch = f"{config.branch_prefix}{normalized}"
