@@ -13,7 +13,9 @@ from wt.cli import app
 runner = CliRunner()
 
 
-def test_merge_merges_into_base_and_deletes_worktree(git_repo: Path, monkeypatch) -> None:
+def test_merge_merges_into_base_and_deletes_worktree(
+    git_repo: Path, monkeypatch
+) -> None:
     monkeypatch.chdir(git_repo)
 
     result = runner.invoke(app, ["new", "my-feature", "--no-ai", "--no-push"])
@@ -24,7 +26,9 @@ def test_merge_merges_into_base_and_deletes_worktree(git_repo: Path, monkeypatch
 
     (worktree_path / "feature.txt").write_text("hello\n", encoding="utf-8")
     subprocess.run(["git", "add", "feature.txt"], cwd=worktree_path, check=True)
-    subprocess.run(["git", "commit", "-m", "Add feature"], cwd=worktree_path, check=True)
+    subprocess.run(
+        ["git", "commit", "-m", "Add feature"], cwd=worktree_path, check=True
+    )
 
     monkeypatch.chdir(worktree_path)
     result = runner.invoke(app, ["merge", "--no-push"])
@@ -56,4 +60,3 @@ def test_merge_requires_worktree(git_repo: Path, monkeypatch) -> None:
     result = runner.invoke(app, ["merge", "--no-push"])
     assert result.exit_code != 0
     assert "worktree" in result.stdout.lower()
-
