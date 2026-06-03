@@ -3,6 +3,8 @@
 from pathlib import Path
 from unittest.mock import MagicMock
 
+import subprocess
+
 from wt.init import InitContext, build_init_env, resolve_init_script, run_init_script
 
 
@@ -85,6 +87,37 @@ class TestResolveInitScript:
         result = resolve_init_script("python python-init.py", wt_root)
 
         assert result == f"python {hook}"
+
+    def test_python_hook_reference_quotes_spaces(self, tmp_path, monkeypatch) -> None:
+        home = tmp_path / "home with spaces"
+        monkeypatch.setenv("HOME", str(home))
+        user_hooks = home / ".wt" / "hooks"
+        user_hooks.mkdir(parents=True)
+        hook = user_hooks / "python-init.py"
+        hook.write_text("print('hello')")
+        wt_root = tmp_path / ".wt"
+        wt_root.mkdir()
+
+        result = resolve_init_script("python-init.py", wt_root)
+
+        assert result == f"python '{hook}'"
+
+    def test_python_hook_reference_uses_windows_safe_quoting(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        home = tmp_path / "home with spaces"
+        monkeypatch.setenv("HOME", str(home))
+        monkeypatch.setattr("wt.init._is_windows", lambda: True)
+        user_hooks = home / ".wt" / "hooks"
+        user_hooks.mkdir(parents=True)
+        hook = user_hooks / "python-init.py"
+        hook.write_text("print('hello')")
+        wt_root = tmp_path / ".wt"
+        wt_root.mkdir()
+
+        result = resolve_init_script("python-init.py", wt_root)
+
+        assert result == subprocess.list2cmdline(["python", str(hook)])
 
     def test_fallback_to_hooks_init_sh(self, tmp_path) -> None:
         wt_root = tmp_path / ".wt"

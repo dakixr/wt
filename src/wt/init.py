@@ -47,12 +47,23 @@ def get_user_hooks_dir() -> Path:
     return Path("~/.wt/hooks").expanduser()
 
 
+def _is_windows() -> bool:
+    """Return whether wt is running on Windows."""
+    return os.name == "nt"
+
+
+def _join_command(args: list[str]) -> str:
+    """Join shell command arguments with platform-safe quoting."""
+    if _is_windows():
+        return subprocess.list2cmdline(args)
+    return shlex.join(args)
+
+
 def _hook_command(path: Path) -> str:
     """Build a shell command for a hook path."""
-    quoted = shlex.quote(str(path))
     if path.suffix == ".py":
-        return f"python {quoted}"
-    return quoted
+        return _join_command(["python", str(path)])
+    return _join_command([str(path)])
 
 
 def _find_hook_reference(reference: str, wt_root: Path) -> Path | None:
@@ -101,7 +112,7 @@ def _resolve_config_script(config_script: str, wt_root: Path) -> str:
                 resolved_tokens[index] = str(hook)
                 changed = True
 
-    return shlex.join(resolved_tokens) if changed else config_script
+    return _join_command(resolved_tokens) if changed else config_script
 
 
 def resolve_init_script(config_script: str | None, wt_root: Path) -> str | None:
