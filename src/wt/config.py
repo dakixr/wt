@@ -4,17 +4,21 @@ from __future__ import annotations
 
 import json
 from dataclasses import asdict, dataclass
+from hashlib import sha1
 from pathlib import Path
+
+CONFIG_SCHEMA_VERSION = 1
+DEFAULT_WORKTREES_DIR = "~/.wt/worktrees"
 
 
 @dataclass
 class WtConfig:
     """Configuration schema for .wt/wt.json."""
 
+    version: int = CONFIG_SCHEMA_VERSION
     branch_prefix: str = "feature/"
     base_branch: str = "develop"
     remote: str = "origin"
-    worktrees_dir: str = ".wt/worktrees"
     default_ai_tui: str = "opencode"
     init_script: str | None = None
 
@@ -24,13 +28,14 @@ class WtConfig:
         if config_path.exists():
             with config_path.open("r", encoding="utf-8") as handle:
                 data = json.load(handle)
-            filtered = {
-                key: value
-                for key, value in data.items()
-                if key in cls.__dataclass_fields__
-            }
+            filtered = {key: value for key, value in data.items() if key in cls.fields()}
             return cls(**filtered)
         return cls()
+
+    @classmethod
+    def fields(cls) -> set[str]:
+        """Return persisted config field names."""
+        return set(cls.__dataclass_fields__)
 
     def save(self, config_path: Path) -> None:
         """Save config to file."""
@@ -49,8 +54,14 @@ def get_config_path(repo_root: Path) -> Path:
     return get_wt_dir(repo_root) / "wt.json"
 
 
+def resolve_worktrees_dir(repo_root: Path) -> Path:
+    """Resolve the internal worktrees directory for a repository."""
+    repo_id = sha1(str(repo_root.resolve()).encode("utf-8")).hexdigest()[:8]
+    return Path(DEFAULT_WORKTREES_DIR).expanduser() / f"{repo_root.name}-{repo_id}"
+
+
 def ensure_config(repo_root: Path) -> WtConfig:
-    """Ensure config exists, creating with defaults if needed."""
+    """Ensure config exists and is migrated to the current schema."""
     config_path = get_config_path(repo_root)
     config = WtConfig.load(config_path)
     if not config_path.exists():
@@ -60,7 +71,20 @@ def ensure_config(repo_root: Path) -> WtConfig:
         current_branch = get_current_branch(cwd=repo_root)
         config.base_branch = current_branch
         config.save(config_path)
+    else:
+        with config_path.open("r", encoding="utf-8") as handle:
+            data = json.load(handle)
+        if set(data) != WtConfig.fields() or data.get("version") != CONFIG_SCHEMA_VERSION:
+            config.version = CONFIG_SCHEMA_VERSION
+            config.save(config_path)
     return config
+
+
+def migrate_config_if_exists(repo_root: Path) -> None:
+    """Migrate an existing config file without creating a new one."""
+    config_path = get_config_path(repo_root)
+    if config_path.exists():
+        ensure_config(repo_root)
 
 
 def ensure_worktrees_gitignore(repo_path: Path) -> None:
@@ -69,4 +93,4 @@ def ensure_worktrees_gitignore(repo_path: Path) -> None:
     gitignore_path = wt_dir / ".gitignore"
     if not gitignore_path.exists():
         wt_dir.mkdir(parents=True, exist_ok=True)
-        gitignore_path.write_text("state.json\nworktrees/\n")
+        gitignore_path.write_text("state.json\n")

@@ -54,6 +54,38 @@ class TestResolveInitScript:
         result = resolve_init_script("uv sync", wt_root)
         assert result == "uv sync"
 
+    def test_explicit_config_resolves_user_hook_reference(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        home = tmp_path / "home"
+        monkeypatch.setenv("HOME", str(home))
+        user_hooks = home / ".wt" / "hooks"
+        user_hooks.mkdir(parents=True)
+        hook = user_hooks / "python-init.py"
+        hook.write_text("print('hello')")
+        wt_root = tmp_path / ".wt"
+        wt_root.mkdir()
+
+        result = resolve_init_script("python-init.py", wt_root)
+
+        assert result == f"python {hook}"
+
+    def test_explicit_interpreter_resolves_user_hook_reference(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        home = tmp_path / "home"
+        monkeypatch.setenv("HOME", str(home))
+        user_hooks = home / ".wt" / "hooks"
+        user_hooks.mkdir(parents=True)
+        hook = user_hooks / "python-init.py"
+        hook.write_text("print('hello')")
+        wt_root = tmp_path / ".wt"
+        wt_root.mkdir()
+
+        result = resolve_init_script("python python-init.py", wt_root)
+
+        assert result == f"python {hook}"
+
     def test_fallback_to_hooks_init_sh(self, tmp_path) -> None:
         wt_root = tmp_path / ".wt"
         hooks_dir = wt_root / "hooks"
@@ -63,6 +95,49 @@ class TestResolveInitScript:
 
         result = resolve_init_script(None, wt_root)
         assert result == str(init_script)
+
+    def test_fallback_to_repo_hooks_init_py(self, tmp_path) -> None:
+        wt_root = tmp_path / ".wt"
+        hooks_dir = wt_root / "hooks"
+        hooks_dir.mkdir(parents=True)
+        init_script = hooks_dir / "init.py"
+        init_script.write_text("print('hello')")
+
+        result = resolve_init_script(None, wt_root)
+
+        assert result == f"python {init_script}"
+
+    def test_fallback_to_user_hooks_init_sh(self, tmp_path, monkeypatch) -> None:
+        home = tmp_path / "home"
+        monkeypatch.setenv("HOME", str(home))
+        hooks_dir = home / ".wt" / "hooks"
+        hooks_dir.mkdir(parents=True)
+        init_script = hooks_dir / "init.sh"
+        init_script.write_text("#!/bin/sh\necho hello")
+        wt_root = tmp_path / ".wt"
+        wt_root.mkdir()
+
+        result = resolve_init_script(None, wt_root)
+
+        assert result == str(init_script)
+
+    def test_repo_hook_takes_priority_over_user_hook(
+        self, tmp_path, monkeypatch
+    ) -> None:
+        home = tmp_path / "home"
+        monkeypatch.setenv("HOME", str(home))
+        user_hooks = home / ".wt" / "hooks"
+        user_hooks.mkdir(parents=True)
+        (user_hooks / "init.sh").write_text("#!/bin/sh\necho user")
+        wt_root = tmp_path / ".wt"
+        repo_hooks = wt_root / "hooks"
+        repo_hooks.mkdir(parents=True)
+        repo_hook = repo_hooks / "init.sh"
+        repo_hook.write_text("#!/bin/sh\necho repo")
+
+        result = resolve_init_script(None, wt_root)
+
+        assert result == str(repo_hook)
 
     def test_no_fallback_if_missing(self, tmp_path) -> None:
         wt_root = tmp_path / ".wt"

@@ -19,6 +19,8 @@ from wt.config import (
     ensure_worktrees_gitignore,
     get_config_path,
     get_wt_dir,
+    migrate_config_if_exists,
+    resolve_worktrees_dir,
 )
 from wt.errors import (
     BaseBranchNotFoundError,
@@ -130,12 +132,6 @@ def init(
     remote: Annotated[
         str | None, typer.Option("--remote", help="Remote name for push/fetch")
     ] = None,
-    worktrees_dir: Annotated[
-        str | None,
-        typer.Option(
-            "--worktrees-dir", help="Directory (relative to repo) for worktrees"
-        ),
-    ] = None,
     default_ai_tui: Annotated[
         str | None, typer.Option("--default-ai-tui", help="Default AI TUI to launch")
     ] = None,
@@ -169,7 +165,6 @@ def init(
             branch_prefix,
             base,
             remote,
-            worktrees_dir,
             default_ai_tui,
             init_script,
         )
@@ -195,8 +190,6 @@ def init(
         config.base_branch = base
     if remote is not None:
         config.remote = remote
-    if worktrees_dir is not None:
-        config.worktrees_dir = worktrees_dir
     if default_ai_tui is not None:
         config.default_ai_tui = default_ai_tui
     if init_script is not None:
@@ -205,9 +198,7 @@ def init(
     config.save(config_path)
     ensure_worktrees_gitignore(repo_root)
 
-    worktrees_path = Path(config.worktrees_dir)
-    if not worktrees_path.is_absolute():
-        worktrees_path = repo_root / worktrees_path
+    worktrees_path = resolve_worktrees_dir(repo_root)
     worktrees_path.mkdir(parents=True, exist_ok=True)
 
     if hook:
@@ -254,8 +245,6 @@ def new(
 ) -> None:
     """Create a new worktree for a feature."""
     repo_root = get_validated_repo_root()
-    config = ensure_config(repo_root)
-    ensure_worktrees_gitignore(repo_root)
 
     # Check for unstaged files in current branch
     current_branch = get_current_branch(cwd=repo_root)
@@ -274,9 +263,12 @@ def new(
             console.print("[dim]Cancelled.[/dim]")
             raise typer.Exit(0)
 
+    config = ensure_config(repo_root)
+    ensure_worktrees_gitignore(repo_root)
+
     normalized = normalize_feat_name(feat_name)
     branch = f"{config.branch_prefix}{normalized}"
-    worktree_path = repo_root / config.worktrees_dir / normalized
+    worktree_path = resolve_worktrees_dir(repo_root) / normalized
     base_branch = base or config.base_branch
 
     if branch_exists(branch, cwd=repo_root):
@@ -373,7 +365,7 @@ def checkout(
             raise BranchNotFoundError(branch)
 
     feat_name = derive_feat_name_from_branch(branch, config.branch_prefix)
-    worktree_path = repo_root / config.worktrees_dir / feat_name
+    worktree_path = resolve_worktrees_dir(repo_root) / feat_name
     worktree_path.parent.mkdir(parents=True, exist_ok=True)
     worktree_add_existing(worktree_path, branch, cwd=repo_root)
 
@@ -1084,6 +1076,7 @@ def main(
         return
 
     try:
+        migrate_config_if_exists(repo_root)
         sync_state(repo_root)
     except subprocess.CalledProcessError as exc:
         console.print(

@@ -11,8 +11,13 @@ from unittest.mock import patch
 from typer.testing import CliRunner
 
 from wt.cli import app
+from wt.config import resolve_worktrees_dir
 
 runner = CliRunner()
+
+
+def worktree_path_for(repo: Path, name: str) -> Path:
+    return resolve_worktrees_dir(repo) / name
 
 
 def test_delete_by_name(git_repo: Path, monkeypatch) -> None:
@@ -22,7 +27,7 @@ def test_delete_by_name(git_repo: Path, monkeypatch) -> None:
     result = runner.invoke(app, ["new", "my-feature", "--no-ai", "--no-push"])
     assert result.exit_code == 0
 
-    worktree_path = git_repo / ".wt" / "worktrees" / "my-feature"
+    worktree_path = worktree_path_for(git_repo, "my-feature")
     assert worktree_path.exists()
 
     result = runner.invoke(app, ["delete", "my-feature", "--force"])
@@ -52,7 +57,7 @@ def test_delete_by_branch_name(git_repo: Path, monkeypatch) -> None:
     result = runner.invoke(app, ["new", "my-feature", "--no-ai", "--no-push"])
     assert result.exit_code == 0
 
-    worktree_path = git_repo / ".wt" / "worktrees" / "my-feature"
+    worktree_path = worktree_path_for(git_repo, "my-feature")
     assert worktree_path.exists()
 
     result = runner.invoke(app, ["delete", "feature/my-feature", "--force"])
@@ -68,7 +73,7 @@ def test_delete_from_worktree(git_repo: Path, monkeypatch) -> None:
     result = runner.invoke(app, ["new", "my-feature", "--no-ai", "--no-push"])
     assert result.exit_code == 0
 
-    worktree_path = git_repo / ".wt" / "worktrees" / "my-feature"
+    worktree_path = worktree_path_for(git_repo, "my-feature")
     assert worktree_path.exists()
 
     monkeypatch.chdir(worktree_path)
@@ -115,7 +120,7 @@ def test_delete_force_bypasses_checks(git_repo: Path, monkeypatch) -> None:
     result = runner.invoke(app, ["new", "my-feature", "--no-ai", "--no-push"])
     assert result.exit_code == 0
 
-    worktree_path = git_repo / ".wt" / "worktrees" / "my-feature"
+    worktree_path = worktree_path_for(git_repo, "my-feature")
     assert worktree_path.exists()
 
     (worktree_path / "feature.txt").write_text("hello\n", encoding="utf-8")
@@ -137,7 +142,7 @@ def test_delete_with_remote_flag(git_repo: Path, monkeypatch) -> None:
     result = runner.invoke(app, ["new", "my-feature", "--no-ai"])
     assert result.exit_code == 0
 
-    worktree_path = git_repo / ".wt" / "worktrees" / "my-feature"
+    worktree_path = worktree_path_for(git_repo, "my-feature")
     assert worktree_path.exists()
 
     result = runner.invoke(app, ["delete", "my-feature", "--remote", "--force"])
@@ -162,7 +167,7 @@ def test_delete_stale_worktree_missing_path(git_repo: Path, monkeypatch) -> None
     result = runner.invoke(app, ["new", "stale-feature", "--no-ai", "--no-push"])
     assert result.exit_code == 0
 
-    worktree_path = git_repo / ".wt" / "worktrees" / "stale-feature"
+    worktree_path = worktree_path_for(git_repo, "stale-feature")
     assert worktree_path.exists()
 
     # Simulate external deletion of the worktree directory.
@@ -195,7 +200,7 @@ def test_delete_stale_worktree_with_force(git_repo: Path, monkeypatch) -> None:
     result = runner.invoke(app, ["new", "stale-force", "--no-ai", "--no-push"])
     assert result.exit_code == 0
 
-    worktree_path = git_repo / ".wt" / "worktrees" / "stale-force"
+    worktree_path = worktree_path_for(git_repo, "stale-force")
     shutil.rmtree(worktree_path)
 
     result = runner.invoke(app, ["delete", "stale-force", "--force"])
@@ -213,7 +218,7 @@ def test_delete_stale_worktree_with_remote(git_repo: Path, monkeypatch) -> None:
     result = runner.invoke(app, ["new", "stale-remote", "--no-ai"])
     assert result.exit_code == 0
 
-    worktree_path = git_repo / ".wt" / "worktrees" / "stale-remote"
+    worktree_path = worktree_path_for(git_repo, "stale-remote")
     shutil.rmtree(worktree_path)
 
     result = runner.invoke(app, ["delete", "stale-remote", "--remote", "--force"])

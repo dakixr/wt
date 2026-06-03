@@ -17,7 +17,7 @@ Create a new worktree and branch for your feature.
 wt new login-page
 ```
 This single command:
-1.  **Creates a worktree** in `.wt/worktrees/login-page` and switches to the `feature/login-page` branch.
+1.  **Creates a worktree** in `~/.wt/worktrees/myrepo-<id>/login-page` and switches to the `feature/login-page` branch.
 2.  **Runs initialization hooks** (if configured) to set up your environment.
 3.  **Launches your AI coding assistant** (defaults to `opencode`) so you can start working immediately.
 
@@ -77,7 +77,14 @@ Set `init_script` in `.wt/wt.json`:
 ```
 
 ### 2. Hook Script (Recommended)
-If `init_script` is not set, `wt` automatically looks for `.wt/hooks/init.sh` and runs it if present.
+If `init_script` is not set, `wt` automatically looks for hooks in this order:
+
+1. `.wt/hooks/init.sh`
+2. `.wt/hooks/init.py`
+3. `~/.wt/hooks/init.sh`
+4. `~/.wt/hooks/init.py`
+
+Repository hooks take priority over user-level hooks. Python hooks are run with `python`.
 
 Example `.wt/hooks/init.sh`:
 ```bash
@@ -88,6 +95,14 @@ uv sync
 cp "$WT_REPO_ROOT/.env" .env
 ```
 
+You can also reference a user-level hook by filename from `init_script`, for example:
+```json
+{
+  "init_script": "python-init.py"
+}
+```
+This resolves to `~/.wt/hooks/python-init.py` when present.
+
 ### Available Environment Variables
 The following variables are available to your init scripts:
 
@@ -95,7 +110,7 @@ The following variables are available to your init scripts:
 |----------|-------------|---------|
 | `WT_ROOT` | The `.wt` directory path | `/home/user/myrepo/.wt` |
 | `WT_REPO_ROOT` | The main repository root path | `/home/user/myrepo` |
-| `WT_WORKTREE_PATH` | The path to the newly created worktree | `/home/user/myrepo/.wt/worktrees/login-page` |
+| `WT_WORKTREE_PATH` | The path to the newly created worktree | `/home/user/.wt/worktrees/myrepo-1a2b3c4d/login-page` |
 | `WT_FEAT_NAME` | The normalized feature name | `login-page` |
 | `WT_BRANCH` | The full branch name | `feature/login-page` |
 | `WT_BASE_BRANCH` | The base branch used for creation | `develop` |
@@ -108,5 +123,5 @@ Configuration is stored in `.wt/wt.json`.
 |--------|---------|-------------|
 | `branch_prefix` | `feature/` | Prefix for feature branches |
 | `base_branch` | `develop` | Base branch for new worktrees |
-| `worktrees_dir` | `.wt/worktrees` | Directory for worktree isolation |
+| `version` | `1` | Configuration schema version |
 | `init_script` | `null` | Script to run after creating a worktree |

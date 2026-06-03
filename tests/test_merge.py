@@ -9,6 +9,7 @@ from pathlib import Path
 from typer.testing import CliRunner
 
 from wt.cli import app
+from wt.config import resolve_worktrees_dir
 
 runner = CliRunner()
 
@@ -21,7 +22,7 @@ def test_merge_merges_into_base_and_deletes_worktree(
     result = runner.invoke(app, ["new", "my-feature", "--no-ai", "--no-push"])
     assert result.exit_code == 0
 
-    worktree_path = git_repo / ".wt" / "worktrees" / "my-feature"
+    worktree_path = resolve_worktrees_dir(git_repo) / "my-feature"
     assert worktree_path.exists()
 
     (worktree_path / "feature.txt").write_text("hello\n", encoding="utf-8")
